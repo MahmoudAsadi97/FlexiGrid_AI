@@ -1,0 +1,14 @@
+{
+  "mode": "frozen-demo-fixture",
+  "warning": "Representative normalized values for offline reproducibility; not asserted as a live Elia record.",
+  "source_portal": "https://opendata.elia.be/",
+  "dataset_contracts": {
+    "ods002": "Measured and forecast total load on the Belgian grid",
+    "ods086": "Wind power production estimation and forecast",
+    "ods201": "Total generation aggregated by fuel type"
+  },
+  "normalized_hourly": {
+    "tariff_eur_per_kwh": [0.22, 0.18, 0.16, 0.15, 0.14, 0.15, 0.19, 0.27, 0.31, 0.29, 0.25, 0.23, 0.21, 0.20, 0.22, 0.28, 0.37, 0.46, 0.42, 0.34, 0.28, 0.24, 0.21, 0.19],
+    "derived_grid_stress_0_100": [48, 42, 38, 34, 31, 33, 45, 59, 71, 76, 68, 55, 42, 35, 29, 32, 51, 78, 91, 86, 70, 58, 52, 47]
+  }
+}

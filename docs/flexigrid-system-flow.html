@@ -1,0 +1,354 @@
+<div id="flexigrid-flow-v1" class="fg-flow">
+  <style>
+    #flexigrid-flow-v1 {
+      --fg-bg: #f7faf8;
+      --fg-panel: #ffffff;
+      --fg-soft: #eef3f0;
+      --fg-line: #d7e2dd;
+      --fg-ink: #0b1714;
+      --fg-muted: #667872;
+      --fg-teal: #1c7c66;
+      --fg-lime: #aee637;
+      --fg-orange: #f3a65a;
+      color: var(--fg-ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 88% 4%, color-mix(in srgb, var(--fg-lime) 22%, transparent), transparent 28%),
+        var(--fg-bg);
+      border: 1px solid var(--fg-line);
+      border-radius: 24px;
+      padding: clamp(18px, 3vw, 34px);
+      box-shadow: 0 20px 55px rgba(11, 23, 20, 0.08);
+      overflow: hidden;
+    }
+    @media (prefers-color-scheme: dark) {
+      #flexigrid-flow-v1 {
+        --fg-bg: #0e1714;
+        --fg-panel: #15231e;
+        --fg-soft: #1a2d26;
+        --fg-line: #2a443a;
+        --fg-ink: #f3faf6;
+        --fg-muted: #a9bbb4;
+        --fg-teal: #55c7a8;
+        --fg-lime: #b6ef41;
+        --fg-orange: #ffb46b;
+        box-shadow: 0 24px 65px rgba(0, 0, 0, 0.32);
+      }
+    }
+    #flexigrid-flow-v1 * { box-sizing: border-box; }
+    #flexigrid-flow-v1 .fg-kicker {
+      color: var(--fg-teal);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      margin: 0 0 8px;
+    }
+    #flexigrid-flow-v1 h2 {
+      font-size: clamp(25px, 4vw, 42px);
+      line-height: 1.02;
+      letter-spacing: -.035em;
+      margin: 0;
+      max-width: 840px;
+    }
+    #flexigrid-flow-v1 .fg-subtitle {
+      color: var(--fg-muted);
+      font-size: 15px;
+      line-height: 1.5;
+      margin: 12px 0 26px;
+      max-width: 780px;
+    }
+    #flexigrid-flow-v1 .fg-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(270px, .75fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+    #flexigrid-flow-v1 .fg-stage-wrap,
+    #flexigrid-flow-v1 .fg-inspector {
+      background: color-mix(in srgb, var(--fg-panel) 92%, transparent);
+      border: 1px solid var(--fg-line);
+      border-radius: 18px;
+    }
+    #flexigrid-flow-v1 .fg-stage-wrap { padding: 18px; }
+    #flexigrid-flow-v1 .fg-stage-list {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(112px, 1fr));
+      gap: 24px;
+      position: relative;
+    }
+    #flexigrid-flow-v1 .fg-stage-list::before {
+      content: "";
+      position: absolute;
+      left: 7%; right: 7%; top: 39px;
+      height: 2px;
+      background: var(--fg-line);
+    }
+    #flexigrid-flow-v1 .fg-stage-list::after {
+      content: "";
+      position: absolute;
+      left: 7%; top: 39px;
+      width: var(--progress, 0%);
+      max-width: 86%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--fg-teal), var(--fg-lime));
+      transition: width .35s ease;
+    }
+    #flexigrid-flow-v1 .fg-stage {
+      appearance: none;
+      background: transparent;
+      border: 0;
+      color: inherit;
+      cursor: pointer;
+      min-width: 0;
+      padding: 0;
+      position: relative;
+      text-align: left;
+      z-index: 1;
+    }
+    #flexigrid-flow-v1 .fg-index {
+      align-items: center;
+      background: var(--fg-soft);
+      border: 2px solid var(--fg-line);
+      border-radius: 999px;
+      display: flex;
+      font-size: 13px;
+      font-weight: 800;
+      height: 42px;
+      justify-content: center;
+      margin: 18px 0 16px;
+      transition: transform .2s ease, background .2s ease, border-color .2s ease;
+      width: 42px;
+    }
+    #flexigrid-flow-v1 .fg-stage:hover .fg-index { transform: translateY(-2px); }
+    #flexigrid-flow-v1 .fg-stage[aria-selected="true"] .fg-index {
+      background: var(--fg-lime);
+      border-color: var(--fg-lime);
+      color: #0b1714;
+      box-shadow: 0 0 0 7px color-mix(in srgb, var(--fg-lime) 20%, transparent);
+    }
+    #flexigrid-flow-v1 .fg-stage strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.18;
+      margin-bottom: 6px;
+    }
+    #flexigrid-flow-v1 .fg-stage small {
+      color: var(--fg-muted);
+      display: block;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    #flexigrid-flow-v1 .fg-contract {
+      background: var(--fg-soft);
+      border-radius: 14px;
+      display: grid;
+      gap: 9px;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 22px;
+      padding: 12px;
+    }
+    #flexigrid-flow-v1 .fg-contract span {
+      color: var(--fg-muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    #flexigrid-flow-v1 .fg-contract b {
+      color: var(--fg-ink);
+      display: block;
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+    #flexigrid-flow-v1 .fg-inspector {
+      display: flex;
+      flex-direction: column;
+      min-height: 320px;
+      padding: 22px;
+    }
+    #flexigrid-flow-v1 .fg-badge {
+      align-self: flex-start;
+      background: color-mix(in srgb, var(--fg-teal) 13%, transparent);
+      border: 1px solid color-mix(in srgb, var(--fg-teal) 35%, var(--fg-line));
+      border-radius: 999px;
+      color: var(--fg-teal);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      padding: 7px 10px;
+      text-transform: uppercase;
+    }
+    #flexigrid-flow-v1 .fg-inspector h3 {
+      font-size: 26px;
+      letter-spacing: -.025em;
+      line-height: 1.05;
+      margin: 20px 0 10px;
+    }
+    #flexigrid-flow-v1 .fg-inspector p {
+      color: var(--fg-muted);
+      font-size: 14px;
+      line-height: 1.55;
+      margin: 0 0 18px;
+    }
+    #flexigrid-flow-v1 .fg-proof {
+      border-left: 3px solid var(--fg-lime);
+      margin-top: auto;
+      padding: 2px 0 2px 14px;
+    }
+    #flexigrid-flow-v1 .fg-proof span {
+      color: var(--fg-muted);
+      display: block;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+    #flexigrid-flow-v1 .fg-proof b { font-size: 15px; line-height: 1.4; }
+    #flexigrid-flow-v1 .fg-controls {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+    #flexigrid-flow-v1 .fg-controls button {
+      appearance: none;
+      background: var(--fg-panel);
+      border: 1px solid var(--fg-line);
+      border-radius: 10px;
+      color: var(--fg-ink);
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 750;
+      padding: 9px 13px;
+    }
+    #flexigrid-flow-v1 .fg-controls button:last-child {
+      background: var(--fg-ink);
+      border-color: var(--fg-ink);
+      color: var(--fg-panel);
+    }
+    #flexigrid-flow-v1 button:focus-visible { outline: 3px solid color-mix(in srgb, var(--fg-lime) 60%, transparent); outline-offset: 3px; }
+    @media (max-width: 820px) {
+      #flexigrid-flow-v1 .fg-grid { grid-template-columns: 1fr; }
+      #flexigrid-flow-v1 .fg-stage-list { grid-template-columns: 1fr; gap: 6px; }
+      #flexigrid-flow-v1 .fg-stage-list::before,
+      #flexigrid-flow-v1 .fg-stage-list::after { display: none; }
+      #flexigrid-flow-v1 .fg-stage { align-items: center; display: grid; gap: 10px 12px; grid-template-columns: 44px 1fr; padding: 5px 0; }
+      #flexigrid-flow-v1 .fg-index { grid-row: span 2; margin: 0; }
+      #flexigrid-flow-v1 .fg-stage strong { margin: 0; }
+      #flexigrid-flow-v1 .fg-contract { grid-template-columns: 1fr; }
+    }
+  </style>
+
+  <p class="fg-kicker">Interactive system map</p>
+  <h2>Generation is the last step, not the safety mechanism.</h2>
+  <p class="fg-subtitle">Select a stage to see its contract, why it exists, and the proof the prototype exposes during the demo.</p>
+
+  <div class="fg-grid">
+    <section class="fg-stage-wrap" aria-label="FlexiGrid AI pipeline">
+      <div class="fg-stage-list" role="tablist" aria-label="Pipeline stages">
+        <button class="fg-stage" role="tab" aria-selected="true" data-step="0">
+          <span class="fg-index">01</span><strong>Bounded mission</strong><small>typed inputs</small>
+        </button>
+        <button class="fg-stage" role="tab" aria-selected="false" data-step="1">
+          <span class="fg-index">02</span><strong>Lexical RAG</strong><small>top-k evidence</small>
+        </button>
+        <button class="fg-stage" role="tab" aria-selected="false" data-step="2">
+          <span class="fg-index">03</span><strong>MCP tools</strong><small>grid + policy contracts</small>
+        </button>
+        <button class="fg-stage" role="tab" aria-selected="false" data-step="3">
+          <span class="fg-index">04</span><strong>Planner + critic</strong><small>joint constrained search</small>
+        </button>
+        <button class="fg-stage" role="tab" aria-selected="false" data-step="4">
+          <span class="fg-index">05</span><strong>Cited answer</strong><small>structured explanation</small>
+        </button>
+      </div>
+      <div class="fg-contract" aria-label="System guarantees">
+        <span><b>Grid context</b>Frozen, labelled fixture for the exam demo</span>
+        <span><b>Tariff</b>Separate consumer price signal</span>
+        <span><b>Hard guardrail</b>Controllable load ≤ 4.6 kW</span>
+      </div>
+    </section>
+
+    <aside class="fg-inspector" aria-live="polite">
+      <span class="fg-badge" data-badge>Input contract</span>
+      <h3 data-title>Typed scenario, not arbitrary intent</h3>
+      <p data-body>The user selects a bounded mission and objective. This keeps the overnight prototype reproducible and prevents a free-form model from silently inventing task durations or deadlines.</p>
+      <div class="fg-proof"><span>Inspectable proof</span><b data-proof>Mission, device limits and objective are visible before execution.</b></div>
+      <div class="fg-controls">
+        <button type="button" data-prev aria-label="Previous pipeline stage">Previous</button>
+        <button type="button" data-next aria-label="Next pipeline stage">Next stage</button>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.getElementById("flexigrid-flow-v1");
+      if (!root) return;
+      const stages = [
+        {
+          badge: "Input contract",
+          title: "Typed scenario, not arbitrary intent",
+          body: "The user selects a bounded mission and objective. This keeps the overnight prototype reproducible and prevents a free-form model from silently inventing task durations or deadlines.",
+          proof: "Mission, device limits and objective are visible before execution."
+        },
+        {
+          badge: "Grounding",
+          title: "Evidence is retrieved before planning",
+          body: "A lexical top-k retriever searches household policies and device manuals. The planner receives compact evidence records with stable source IDs instead of an untraceable block of prose.",
+          proof: "The labelled EV query ranks the EV manual first."
+        },
+        {
+          badge: "Tool boundary",
+          title: "Typed tools separate data from reasoning",
+          body: "MCP-style functions expose the grid snapshot, retrieved evidence and optimization request through explicit schemas. The Elia adapter has a deterministic frozen fallback for demo reliability.",
+          proof: "Exact tool names, arguments and status appear in the transparent trace."
+        },
+        {
+          badge: "Safety core",
+          title: "Joint search proves feasibility",
+          body: "The planner enumerates feasible starts and searches assignments jointly. A critic rejects any schedule that misses a deadline, violates a device window or exceeds the 4.6 kW controllable-load cap.",
+          proof: "Every accepted plan displays a 4/4 constraint verdict."
+        },
+        {
+          badge: "Generation boundary",
+          title: "The model explains; it cannot reschedule",
+          body: "Only after validation may the optional language model produce a schema-constrained explanation. Citation IDs must come from the retrieved evidence set, and deterministic text remains available offline.",
+          proof: "A cited answer can describe only the already-validated schedule."
+        }
+      ];
+      const buttons = [...root.querySelectorAll("[data-step]")];
+      const list = root.querySelector(".fg-stage-list");
+      const title = root.querySelector("[data-title]");
+      const body = root.querySelector("[data-body]");
+      const proof = root.querySelector("[data-proof]");
+      const badge = root.querySelector("[data-badge]");
+      const prev = root.querySelector("[data-prev]");
+      const next = root.querySelector("[data-next]");
+      let active = 0;
+
+      function render(index, focus = false) {
+        active = (index + stages.length) % stages.length;
+        const item = stages[active];
+        buttons.forEach((button, i) => button.setAttribute("aria-selected", String(i === active)));
+        list.style.setProperty("--progress", `${active * 21.5}%`);
+        badge.textContent = item.badge;
+        title.textContent = item.title;
+        body.textContent = item.body;
+        proof.textContent = item.proof;
+        next.textContent = active === stages.length - 1 ? "Restart" : "Next stage";
+        if (focus) buttons[active].focus();
+      }
+
+      buttons.forEach((button) => button.addEventListener("click", () => render(Number(button.dataset.step))));
+      prev.addEventListener("click", () => render(active - 1, true));
+      next.addEventListener("click", () => render(active + 1, true));
+      root.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight") { event.preventDefault(); render(active + 1, true); }
+        if (event.key === "ArrowLeft") { event.preventDefault(); render(active - 1, true); }
+      });
+      render(0);
+    })();
+  </script>
+</div>
