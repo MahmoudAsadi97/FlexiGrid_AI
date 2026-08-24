@@ -1,75 +1,90 @@
 # FlexiGrid AI — 10-minute demo and defense guide
 
+## Before the room fills up
+
+```bash
+ollama serve                                   # local model runtime
+cd backend && uvicorn flexigrid.api:app --port 8000
+npm run dev                                    # interface on :3000
+cd backend && python -m flexigrid.doctor       # every check must PASS
+```
+
+The top bar must read **Live pipeline · qwen2.5:3b-instruct**. Keep one terminal ready for `python -m flexigrid.mcp_host "..."` and the report PDF open as the offline backup.
+
 ## Presentation timing
 
 | Time | Slide / action | Key message |
 |---|---|---|
-| 0:00–0:45 | Title | Generative AI interprets and explains; deterministic code guarantees feasibility. |
-| 0:45–1:40 | Problem | A household request contains deadlines, comfort, power and evidence constraints that fluent text alone cannot guarantee. |
-| 1:40–2:35 | Elia data | ods002, ods086 and ods201 provide Belgian load, wind and generation context. Retail tariff remains a separate labelled fixture. |
-| 2:35–3:40 | Architecture | RAG retrieves allowed evidence, MCP exposes typed tools, the optimizer builds the schedule and the critic gates generation. |
-| 3:40–4:30 | Algorithm | Explain the greedy failure and why exhaustive joint constrained search fixed it. |
-| 4:30–7:10 | Live demo | Select Morning + Balanced, run the agent plan, inspect the schedule, evidence, tool trace, Evaluation and Architecture views. |
-| 7:10–8:20 | Evaluation | Defend 9/9 constraint passes, 100% cost non-regression, 18% fixture improvement, deterministic output and EV retrieval rank 1. |
-| 8:20–9:10 | Limitations | The fixture validates the prototype, not general LLM quality. Live data freshness, a held-out prompt set and production optimization remain future work. |
-| 9:10–10:00 | Close | Restate the hybrid-design thesis and invite technical questions. |
+| 0:00–0:45 | Title | A local model interprets and explains; deterministic code owns feasibility; every claim is a measured number. |
+| 0:45–1:45 | Problem | Deadlines + comfort + the Flemish capacity tariff. The hook: we measured LLM-only scheduling — show the violation rate. |
+| 1:45–3:00 | Data | Elia ods002/ods086/ods201, the tested stress derivation, the labelled fixture, and the 51-chunk corpus with distractors. |
+| 3:00–4:30 | Architecture + techniques | Five stages; guardrails visible in the trace; one tool registry over MCP; each course technique load-bearing, exclusions argued. |
+| 4:30–5:15 | Algorithm | Joint constrained search; the greedy ablation fails the morning mission outright — measured, not anecdotal. |
+| 5:15–7:45 | Live demo | The five-step script below. |
+| 7:45–9:00 | Evaluation | Retrieval table, intent ablation, Baseline B, citation precision, provenance line. |
+| 9:00–10:00 | Conclusion | Proven vs next; invite questions on any layer. |
 
-## Live demo checklist
+## Live demo script (2.5 minutes)
 
-1. Open the deployed site before presenting and keep the Plan view selected.
-2. Choose **Morning** and **Balanced**.
-3. Select **Run agent plan** and narrate retrieval, MCP calls, optimization and criticism.
-4. Point to the 24-hour chart, 4.6 kW cap, cost and grid-stress metrics.
-5. Open the evidence list and MCP trace; identify a retrieved source ID and its corresponding citation.
-6. Open **Evaluation** and explain the acceptance criteria.
-7. Open **Architecture** and connect each stage to its implementation file.
-8. Keep the report PDF available as a backup if connectivity fails.
+1. Point at the top-bar chip: model name, embedding backend, corpus size — nothing simulated.
+2. Run the Morning mission. Walk the right column top-down: extracted constraint chips (with any sanitizer adjustments), the five tool calls with milliseconds and the **llm/guardrail** attribution, retrieval scores, the cited explanation, the critic verdict.
+3. Edit the mission text live — change "before 07:00" to "before 05:00", or add "avoid 17:00 to 20:00" — run again; the schedule follows the text.
+4. Type an impossible mission: *"Charge the EV before 01:00, keep load below 2.0 kW."* The critic rejects it and the UI shows the rejection instead of a plan.
+5. In the terminal: `python -m flexigrid.mcp_host "Charge the EV before 07:00"` — the same agent, every tool call now over a real MCP stdio session.
 
 ## Likely examiner questions
 
-### Why is this generative AI and not only an optimizer?
+### Why is this generative AI and not just an optimizer?
 
-The current prototype is deliberately bounded: predefined natural-language missions drive evidence retrieval, and an optional transformer produces a schema-constrained cited explanation after validation. The optimizer is deterministic because exact power and time constraints are better represented and tested as code. Arbitrary free-text intent-to-constraint extraction is future work, not a result claimed by this demo.
+The mission is free text and the model is load-bearing twice: it extracts the typed constraints that define the optimization problem, and it drives the tool loop. Delete the mission text's deadline and the plan changes; that is measurable in the intent evaluation. What the model does *not* own is feasibility — deliberately, and Baseline B is the measured justification.
 
-### Why use RAG instead of fine-tuning?
+### What does the LLM actually decide in the agent loop?
 
-Manuals, household policies and dataset descriptions change and require source-level traceability. RAG updates without retraining and exposes citation IDs. Fine-tuning would be justified only after collecting enough labelled intent-to-constraint examples and proving prompting plus retrieval remains the bottleneck.
+At each step it receives the tool catalog and a state digest and returns a schema-validated decision (tool + arguments + one-sentence thought). The trace shows every decision it made and every step a guardrail had to take instead. Rogue behaviour is part of the test suite: a mock model that tries to finish before planning is demonstrably overruled.
 
-### What does MCP add?
+### Why a local model instead of GPT-4-class APIs?
 
-MCP separates model reasoning from typed data and action contracts. The same Elia, device, retrieval and optimization functions can be inspected, tested and reused by another compatible host without hiding their inputs and outputs inside a prompt.
+Privacy (household data never leaves the machine), cost and reproducibility (no key, no rate limits, exam demo cannot be broken by a provider outage), and honesty of evaluation (the harness stamps exactly which model produced each number). The client is OpenAI-compatible, so a hosted model is a one-line config change — the architecture is model-agnostic.
+
+### Why hybrid retrieval? Why does BM25 look strong?
+
+The corpus is small and in-domain, so lexical overlap is a strong baseline — the evaluation says so openly. Dense embeddings contribute on paraphrased queries ("car" vs "EV"); reciprocal-rank fusion combines both without tuning score scales. All three modes are switchable per request and measured separately; that is the ablation.
 
 ### How do you prevent hallucinated citations?
 
-The retriever returns stable chunk IDs. The structured explanation schema may reference only those IDs; the backend rejects every citation outside that allow-list.
+The retriever returns stable chunk IDs; the explanation schema is validated; the backend rejects any citation outside the retrieved allow-list and falls back to a deterministic explanation. The guard's rejection count is itself reported in the evaluation.
 
-### Why not let an LLM choose the exact schedule?
+### Why not let the LLM schedule directly?
 
-Language models can violate numeric constraints while sounding confident. The deterministic validator checks every task window and every hourly power sum. Generation happens only after validation passes.
+We measured it (Baseline B): with tasks, windows, tariff and cap in the prompt, the model's schedules violate constraints or fail schema validation in a majority of attempts, while the deterministic search never does. Locally plausible, globally capacity-blind.
 
-### Why exhaustive search?
+### Why exhaustive search? What about scale?
 
-The fixture has four flexible tasks and a small discrete 24-hour horizon, so exhaustive joint search is fast, reproducible and acts as an oracle. A larger production system should use MILP or CP-SAT while preserving the same tool and validator contracts.
+Four tasks over 24 hours is a small discrete problem; branch-and-bound joint search is optimal and acts as an oracle. The greedy ablation shows why "just pick good slots" fails. At production scale the same tool contract would front an MILP/CP-SAT solver, benchmarked against the exhaustive oracle on small fixtures.
 
-### What exactly comes from Elia?
+### What exactly comes from Elia, and what is derived?
 
-The adapter supports raw records for total Belgian load (ods002), wind forecasts (ods086) and actual generation by fuel type (ods201). The offline demo uses a labelled representative grid-stress fixture shaped around those data contracts; it is not presented as a live Elia observation. A separate retail-tariff fixture is used for cost.
+Raw quarter-hour records from ods002 (load) and ods086 (wind) via the official v2.1 API. The 0–100 stress signal is derived — normalized load minus half normalized wind — by a unit-tested module that records its method and provenance. The exam demo uses a labelled frozen fixture; `ELIA_USE_LIVE=true` derives from live records. Retail cost comes from a separate labelled tariff input, never from Elia imbalance prices.
+
+### Where would fine-tuning fit? Why no diffusion/multimodal?
+
+The intent evaluation shows the residual a LoRA would target (per-task deadlines, unusual phrasing); we fine-tune when extraction is the measured bottleneck, not before. Diffusion and multimodal are excluded with an argument: the problem has no image/audio modality and no generative-sampling need — including them would be technique tourism.
 
 ### Are the results scientifically generalizable?
 
-No. The current numbers are acceptance-test results for a deterministic labelled fixture. The next evaluation should use at least 30 held-out user prompts and report retrieval recall@4, citation precision, tool-selection accuracy, groundedness and end-to-end task success with confidence intervals.
+The deterministic results (constraints, ablation, determinism, retrieval on the labelled set) are exact for this fixture and corpus. Local-model numbers are point measurements for the named model; the harness re-runs in one command and records provenance. Confidence intervals over a broader mission set are named future work in the report.
 
 ### How is privacy handled?
 
-The submitted prototype uses no personal smart-meter records and stores no user identity. A production pilot would require consent, data minimization, retention limits, encryption, authentication, audit logs and a GDPR controller/processor assessment.
+Everything runs locally — model included. No personal smart-meter data, no user identity, no cloud calls. A production pilot's requirements (consent, minimization, retention, fail-safe control, GDPR roles) are tabulated in the report's risk section.
 
-### How did both team members collaborate?
+### How did the team divide the work?
 
-One member can lead Elia ingestion, optimization and MCP; the other can lead the interface, RAG corpus and evaluation harness. Both must review the full code path, run both test suites and rehearse the complete demo so either can answer every question.
+Per the report's collaboration table — data/backend vs interface/evaluation, documentation shared — with the explicit rule that both members run `doctor`, both test suites, and the full demo. Every layer has a file-level owner and a second reader.
 
 ## Recovery plan
 
-- If the live Elia API is unavailable, use the clearly labelled frozen snapshot.
-- If the model API is unavailable, use the deterministic cited explanation fallback.
-- If the hosted interface is unavailable, run `npm run dev` locally or present the report’s architecture and evaluation figures.
-- Do not claim a live booking, device command or real household tariff; the prototype is advisory and simulated.
+- Ollama down → the pipeline runs in labelled deterministic mode; say so out loud and continue — the guardrail story still lands.
+- Backend down → the interface shows "Offline simulation" and replays the browser engine; switch to the MCP terminal demo.
+- Everything down → the report PDF and the deck's evaluation slide carry the measured numbers.
+- Never claim: live Elia observation during the demo (unless `ELIA_USE_LIVE` is actually on), device control, or a general LLM benchmark.

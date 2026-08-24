@@ -33,7 +33,23 @@ test("benchmark contains nine reproducible fixture runs", () => {
 });
 
 test("EV request retrieves the EV manual first", () => {
-  assert.equal(retrieveEvidence("charge the EV in eco mode")[0].id, "manual-ev-04");
+  assert.equal(retrieveEvidence("charge the EV in eco mode")[0].id, "manual-ev#1");
+});
+
+test("constraint metrics only count computed checks", () => {
+  const plan = createPlan("morning", "balanced");
+  assert.equal(plan.constraintsTotal, 2); // windows + capacity — nothing padded
+  assert.equal(plan.constraintsSatisfied, 2);
+});
+
+test("savings are signed, never clamped", () => {
+  for (const scenario of scenarios) {
+    for (const objective of ["balanced", "cost", "grid"] as Objective[]) {
+      const plan = createPlan(scenario.id, objective);
+      const expected = Math.round((1 - plan.totalCost / plan.baselineCost) * 100);
+      assert.equal(plan.savingsPercent, expected);
+    }
+  }
 });
 
 test("planning is deterministic", () => {

@@ -54,8 +54,10 @@ export type Plan = {
   baselineLoad: number[];
 };
 
-// Frozen 24-hour fixture used for a reproducible demo. The production adapter
-// replaces gridStress with signals derived from Elia ods002 + ods086.
+// OFFLINE FALLBACK ENGINE. When the Python backend is reachable the dashboard
+// runs the real pipeline (local LLM, hybrid RAG, MCP tools) and renders its
+// trace; this module only powers the clearly-labelled offline simulation and
+// the static build. Fixture values mirror backend/data/elia_demo_snapshot.json.
 export const tariff = [
   0.22, 0.18, 0.16, 0.15, 0.14, 0.15, 0.19, 0.27, 0.31, 0.29, 0.25, 0.23,
   0.21, 0.2, 0.22, 0.28, 0.37, 0.46, 0.42, 0.34, 0.28, 0.24, 0.21, 0.19,
@@ -66,53 +68,55 @@ export const gridStress = [
   91, 86, 70, 58, 52, 47,
 ];
 
+// Chunk IDs mirror the backend corpus (backend/flexigrid/corpus/*) so that
+// offline citations remain meaningful references into the same documents.
 export const evidenceCorpus: Evidence[] = [
   {
-    id: "manual-ev-04",
-    title: "EV charger manual · §4.2",
-    excerpt: "The charger supports scheduled one-hour blocks and draws at most 3.6 kW in eco mode.",
+    id: "manual-ev#1",
+    title: "Wallbox EVL-7 EV charger manual — Scheduled charging",
+    excerpt: "The charger supports scheduled charging in one-hour blocks; in eco mode a two-hour block delivers ≈7.2 kWh at 3.6 kW.",
     tag: "Device manual",
     tokens: ["ev", "charger", "schedule", "eco", "3.6", "charge", "vehicle"],
   },
   {
-    id: "manual-dw-11",
-    title: "Dishwasher manual · p. 11",
-    excerpt: "Eco 50 °C uses approximately 1.0 kWh over two hours. Delayed start is supported.",
+    id: "manual-dishwasher#1",
+    title: "EcoWash D600 dishwasher manual — Delayed start",
+    excerpt: "Eco 50 °C uses ≈1.0 kWh over two hours. A delayed start of 1–24 h moves the cycle into cheaper night hours.",
     tag: "Device manual",
     tokens: ["dishwasher", "eco", "delay", "two", "hours", "1.0", "kwh"],
   },
   {
-    id: "comfort-home",
-    title: "Household comfort policy",
-    excerpt: "Maintain 19–21 °C while occupied. A pre-heat may finish up to 30 minutes before wake-up.",
+    id: "policy-comfort#1",
+    title: "Household comfort policy — Wake-up and departure",
+    excerpt: "Maintain 19–21 °C while occupied. Pre-heating may finish up to 30 minutes before the 06:30 wake-up.",
     tag: "User constraint",
     tokens: ["heat", "home", "comfort", "temperature", "occupied", "wake", "preheat"],
   },
   {
-    id: "tariff-contract",
-    title: "Demo tariff contract · §2",
-    excerpt: "The demo uses a frozen hourly retail tariff. Elia imbalance prices are not treated as consumer prices.",
+    id: "tariff-dynamic#2",
+    title: "Dynamic contracts in Belgium — Imbalance prices are not consumer prices",
+    excerpt: "Elia imbalance prices are market-settlement signals, not household prices; only the retail tariff sets the cost.",
     tag: "Tariff rule",
     tokens: ["dynamic", "tariff", "hourly", "price", "cost", "retail", "consumer"],
   },
   {
-    id: "elia-ods002",
-    title: "Elia Open Data · ods002",
-    excerpt: "Measured and forecast total load on the Belgian grid, including day-ahead and week-ahead forecasts.",
+    id: "elia-ods002#0",
+    title: "Elia Open Data ods002 — What the dataset contains",
+    excerpt: "Measured and forecast total load of the Belgian control area per quarter-hour, including day-ahead forecasts.",
     tag: "Elia dataset",
     tokens: ["grid", "load", "forecast", "elia", "belgian", "peak", "day", "ahead"],
   },
   {
-    id: "elia-ods086",
-    title: "Elia Open Data · ods086",
+    id: "elia-ods086#0",
+    title: "Elia Open Data ods086 — What the dataset contains",
     excerpt: "Intraday, day-ahead and week-ahead wind power forecasts, updated every quarter-hour.",
     tag: "Elia dataset",
     tokens: ["wind", "renewable", "forecast", "elia", "hourly", "grid", "clean"],
   },
   {
-    id: "grid-capacity",
-    title: "Connection capacity profile",
-    excerpt: "Controllable household load is capped at 4.6 kW to avoid creating a new capacity peak.",
+    id: "policy-capacity#1",
+    title: "Capacity tariff — The FlexiGrid connection limit",
+    excerpt: "Controllable household load is capped at 4.6 kW; a single violating hour can raise the capacity bill for twelve months.",
     tag: "Grid constraint",
     tokens: ["grid", "capacity", "load", "4.6", "kw", "peak", "limit"],
   },
@@ -127,7 +131,7 @@ const baseTasks: Task[] = [
     duration: 2,
     earliestStart: 3,
     latestEnd: 7,
-    sourceId: "comfort-home",
+    sourceId: "manual-heatpump#0",
   },
   {
     id: "dishwasher",
@@ -137,7 +141,7 @@ const baseTasks: Task[] = [
     duration: 2,
     earliestStart: 0,
     latestEnd: 7,
-    sourceId: "manual-dw-11",
+    sourceId: "manual-dishwasher#1",
   },
   {
     id: "ev",
@@ -147,7 +151,7 @@ const baseTasks: Task[] = [
     duration: 2,
     earliestStart: 0,
     latestEnd: 7,
-    sourceId: "manual-ev-04",
+    sourceId: "manual-ev#1",
   },
   {
     id: "laundry",
@@ -157,7 +161,7 @@ const baseTasks: Task[] = [
     duration: 1,
     earliestStart: 0,
     latestEnd: 7,
-    sourceId: "grid-capacity",
+    sourceId: "policy-capacity#1",
   },
 ];
 
@@ -253,16 +257,17 @@ function taskMetrics(task: Task, start: number) {
 function scheduleAtEarliest(scenario: Scenario): ScheduledTask[] {
   const load = Array(24).fill(0) as number[];
   return scenario.tasks.map((task) => {
-    let chosen = task.earliestStart;
+    let chosen: number | null = null;
     for (let start = task.earliestStart; start <= task.latestEnd - task.duration; start += 1) {
       const fits = Array.from({ length: task.duration }, (_, offset) => start + offset).every(
-        (hour) => load[hour] + task.powerKw <= scenario.maxGridLoadKw,
+        (hour) => load[hour] + task.powerKw <= scenario.maxGridLoadKw + 1e-9,
       );
       if (fits) {
         chosen = start;
         break;
       }
     }
+    if (chosen === null) throw new Error("No feasible schedule for the supplied constraints");
     for (let offset = 0; offset < task.duration; offset += 1) load[chosen + offset] += task.powerKw;
     return { ...task, start: chosen, end: chosen + task.duration, ...taskMetrics(task, chosen) };
   });
@@ -350,10 +355,13 @@ export function createPlan(scenarioId = "morning", objective?: Objective): Plan 
     baselineCost,
     averageGridScore,
     baselineGridScore,
-    savingsPercent: Math.max(0, Math.round((1 - totalCost / baselineCost) * 100)),
-    gridImprovementPercent: Math.max(0, Math.round((1 - averageGridScore / baselineGridScore) * 100)),
-    constraintsSatisfied: Number(checks.withinWindows) + Number(checks.belowCapacity) + 2,
-    constraintsTotal: 4,
+    // Signed on purpose: a regression must be visible, not clamped away.
+    savingsPercent: Math.round((1 - totalCost / baselineCost) * 100),
+    gridImprovementPercent: Math.round((1 - averageGridScore / baselineGridScore) * 100),
+    // Only checks that are actually computed count. The offline engine
+    // verifies task windows and the hourly capacity cap — nothing else.
+    constraintsSatisfied: Number(checks.withinWindows) + Number(checks.belowCapacity),
+    constraintsTotal: 2,
     hourlyLoad: toHourlyLoad(schedule),
     baselineLoad: toHourlyLoad(baseline),
   };

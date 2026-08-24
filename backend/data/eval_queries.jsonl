@@ -1,0 +1,40 @@
+{"query": "How many kW does the EV charger draw in eco mode?", "relevant_docs": ["manual-ev"]}
+{"query": "Can I schedule the car charger in one-hour blocks?", "relevant_docs": ["manual-ev"]}
+{"query": "Does pausing an EV charge harm the vehicle battery?", "relevant_docs": ["manual-ev"]}
+{"query": "To what state of charge should I charge daily for battery life?", "relevant_docs": ["manual-ev"]}
+{"query": "How much energy does the Eco 50 program of the dishwasher use?", "relevant_docs": ["manual-dishwasher"]}
+{"query": "How do I delay the dishwasher start to cheap night hours?", "relevant_docs": ["manual-dishwasher"]}
+{"query": "What is the heating peak power of the dishwasher?", "relevant_docs": ["manual-dishwasher"]}
+{"query": "Energy consumption of a 40 degree cotton wash", "relevant_docs": ["manual-washer"]}
+{"query": "Why does the washing machine abort the spin and show E4?", "relevant_docs": ["manual-washer"]}
+{"query": "Can the washing machine finish at a chosen end time?", "relevant_docs": ["manual-washer"]}
+{"query": "How much electrical power does the heat pump use while preheating?", "relevant_docs": ["manual-heatpump"]}
+{"query": "How long can a preheated house coast with the compressor off?", "relevant_docs": ["manual-heatpump"]}
+{"query": "What does the heat pump backup resistance heater add in winter?", "relevant_docs": ["manual-heatpump"]}
+{"query": "Is there a quiet mode for the heat pump at night?", "relevant_docs": ["manual-heatpump", "policy-comfort"]}
+{"query": "What indoor temperature must be kept while people are home?", "relevant_docs": ["policy-comfort"]}
+{"query": "When does the household wake up on weekdays?", "relevant_docs": ["policy-comfort"]}
+{"query": "Which appliances may the planner reschedule automatically?", "relevant_docs": ["policy-comfort"]}
+{"query": "Can the washing machine run at 02:00 at night?", "relevant_docs": ["policy-comfort", "manual-washer"]}
+{"query": "How is the monthly peak measured under the capacity tariff?", "relevant_docs": ["policy-capacity"]}
+{"query": "Why is the controllable load capped at 4.6 kW?", "relevant_docs": ["policy-capacity"]}
+{"query": "What is the capaciteitstarief in Flanders?", "relevant_docs": ["policy-capacity"]}
+{"query": "When are prices published for an hourly dynamic contract?", "relevant_docs": ["tariff-dynamic"]}
+{"query": "Are Elia imbalance prices the same as consumer electricity prices?", "relevant_docs": ["tariff-dynamic"]}
+{"query": "Which hours of the day are usually cheapest on a dynamic contract?", "relevant_docs": ["tariff-dynamic", "grid-peak"]}
+{"query": "What does the Elia ods002 dataset contain?", "relevant_docs": ["elia-ods002"]}
+{"query": "Where does FlexiGrid get the Belgian total load forecast?", "relevant_docs": ["elia-ods002"]}
+{"query": "Which dataset provides wind power forecasts for Belgium?", "relevant_docs": ["elia-ods086"]}
+{"query": "How often are the wind forecasts updated?", "relevant_docs": ["elia-ods086"]}
+{"query": "Which dataset shows generation split by fuel type?", "relevant_docs": ["elia-ods201"]}
+{"query": "How is the 0 to 100 grid stress index computed?", "relevant_docs": ["pipeline-stress"]}
+{"query": "What are the limitations of the derived stress signal?", "relevant_docs": ["pipeline-stress"]}
+{"query": "When is the Belgian evening demand peak?", "relevant_docs": ["grid-peak"]}
+{"query": "What are the best windows to shift consumption into?", "relevant_docs": ["grid-peak"]}
+{"query": "How much of its solar production does a household use itself?", "relevant_docs": ["solar-battery"]}
+{"query": "Can a home battery reduce the monthly capacity peak?", "relevant_docs": ["solar-battery"]}
+{"query": "What is the rating of a typical single phase Belgian connection?", "relevant_docs": ["safety-load"]}
+{"query": "What happens if the energy manager loses contact with a device?", "relevant_docs": ["safety-load"]}
+{"query": "Which tools does the FlexiGrid MCP server expose?", "relevant_docs": ["mcp-contract"]}
+{"query": "Are the FlexiGrid tools allowed to control physical devices?", "relevant_docs": ["mcp-contract", "safety-load"]}
+{"query": "Why are retrieval chunk identifiers stable?", "relevant_docs": ["mcp-contract"]}

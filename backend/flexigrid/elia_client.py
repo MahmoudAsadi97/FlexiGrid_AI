@@ -1,3 +1,12 @@
+"""Elia Open Data adapter.
+
+Live mode fetches raw quarter-hour records from the official Opendatasoft API
+and derives the hourly stress signal with ``derive.py``. When the network or
+the API is unavailable — or live mode is off, the default for reproducible
+examinations — the clearly labelled frozen fixture is served instead. The
+``mode`` and ``provenance`` fields always say which one the caller received.
+"""
+
 from __future__ import annotations
 
 import json
@@ -7,9 +16,12 @@ from typing import Any
 
 import httpx
 
+from .derive import DerivationError, derive_stress
+
 ELIA_API = "https://opendata.elia.be/api/explore/v2.1/catalog/datasets"
 SUPPORTED_DATASETS = {"ods002", "ods086", "ods201"}
-SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "data" / "elia_demo_snapshot.json"
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+SNAPSHOT_PATH = DATA_DIR / "elia_demo_snapshot.json"
 
 
 class EliaClient:
@@ -33,14 +45,45 @@ class EliaClient:
             "records": payload.get("results", []),
         }
 
-    def snapshot(self, use_live: bool = False) -> dict[str, Any]:
-        if use_live:
-            try:
-                return {
-                    "mode": "live",
-                    "datasets": {dataset: self.fetch_records(dataset, 96) for dataset in sorted(SUPPORTED_DATASETS)},
-                }
-            except (httpx.HTTPError, ValueError):
-                pass
+    def _frozen(self) -> dict[str, Any]:
         with SNAPSHOT_PATH.open(encoding="utf-8") as handle:
             return json.load(handle)
+
+    def snapshot(self, use_live: bool = False) -> dict[str, Any]:
+        """Hourly tariff + stress with provenance. Never raises on live failure."""
+        if use_live:
+            try:
+                load = self.fetch_records("ods002", 96)
+                wind = self.fetch_records("ods086", 96)
+                derived = derive_stress(load["records"], wind["records"])
+                frozen = self._frozen()
+                return {
+                    "mode": "live-derived",
+                    "provenance": {
+                        "stress": "derived from Elia ods002 + ods086 records",
+                        "fetched_at": load["fetched_at"],
+                        "tariff": "frozen retail-tariff fixture (retail prices are "
+                                  "not published by Elia; see tariff-dynamic corpus doc)",
+                    },
+                    "normalized_hourly": {
+                        "tariff_eur_per_kwh":
+                            frozen["normalized_hourly"]["tariff_eur_per_kwh"],
+                        "derived_grid_stress_0_100": derived["stress_0_100"],
+                    },
+                    "derivation": derived,
+                }
+            except (httpx.HTTPError, DerivationError, ValueError, KeyError) as error:
+                fallback = self._frozen()
+                fallback["live_error"] = f"{type(error).__name__}: {error}"
+                return fallback
+        return self._frozen()
+
+    def series(self, use_live: bool = False) -> tuple[list[float], list[int], str]:
+        """Convenience: (tariff, stress, mode) for the planner."""
+        snapshot = self.snapshot(use_live=use_live)
+        hourly = snapshot["normalized_hourly"]
+        return (
+            list(hourly["tariff_eur_per_kwh"]),
+            list(hourly["derived_grid_stress_0_100"]),
+            snapshot.get("mode", "unknown"),
+        )

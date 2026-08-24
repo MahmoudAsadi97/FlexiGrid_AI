@@ -1,0 +1,15 @@
+{"mission": "Charge the EV and run the dishwasher before 07:00. Keep controllable load below 4.6 kW.", "devices": ["ev", "dishwasher"], "deadline": 7, "objective": "balanced", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Run the laundry by 09:00 as cheaply as possible.", "devices": ["laundry"], "deadline": 9, "objective": "cost", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Preheat the home by 06:30 and charge the car before 07:00.", "devices": ["heat", "ev"], "deadline": 7, "objective": "balanced", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Charge the EV, run the dishwasher and the washing machine before 07:00, support the grid where possible.", "devices": ["ev", "dishwasher", "laundry"], "deadline": 7, "objective": "grid", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Finish the EV charge before 16:00 and prefer high wind hours.", "devices": ["ev"], "deadline": 16, "objective": "grid", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Charge the EV after 14:00 but before 23:00 and avoid the 17:00 to 20:00 evening peak.", "devices": ["ev"], "deadline": 23, "objective": "balanced", "max_load_kw": 4.6, "avoid_hours": [17, 18, 19]}
+{"mission": "Run the dishwasher overnight, done by 06:00, cheapest hours please.", "devices": ["dishwasher"], "deadline": 6, "objective": "cost", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Wash and dry a load of laundry by 12:00 and keep the total below 3.6 kW.", "devices": ["laundry"], "deadline": 12, "objective": "balanced", "max_load_kw": 3.6, "avoid_hours": []}
+{"mission": "Warm the house up for 06:30 and run the dishwasher before 08:00.", "devices": ["heat", "dishwasher"], "deadline": 8, "objective": "balanced", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Charge the vehicle before 05:00, run laundry before 07:00, minimise cost.", "devices": ["ev", "laundry"], "deadline": 7, "objective": "cost", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Support the grid tonight: dishwasher and washing machine done by 06:00, prefer low load hours.", "devices": ["dishwasher", "laundry"], "deadline": 6, "objective": "grid", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Everything ready by 07:00: car charged, dishes washed, laundry done, house preheated. Cap at 4.6 kW.", "devices": ["ev", "dishwasher", "laundry", "heat"], "deadline": 7, "objective": "balanced", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Charge the EV cheaply after 20:00, finished before 24:00, avoid 21:00 to 22:00.", "devices": ["ev"], "deadline": 24, "objective": "cost", "max_load_kw": 4.6, "avoid_hours": [21]}
+{"mission": "Preheat the living room by 07:00 on a budget.", "devices": ["heat"], "deadline": 7, "objective": "cost", "max_load_kw": 4.6, "avoid_hours": []}
+{"mission": "Run the washing machine and dishwasher before 15:00 while the wind is strong.", "devices": ["laundry", "dishwasher"], "deadline": 15, "objective": "grid", "max_load_kw": 4.6, "avoid_hours": []}

@@ -2,39 +2,41 @@
 
 ## Files to upload
 
-- `FlexiGrid_AI_Technical_Report.pdf` — primary report.
-- `FlexiGrid_AI_Technical_Report.docx` — editable report source.
-- `FlexiGrid_AI_Defense_Deck.pptx` — eight-slide, 10-minute defense deck with speaker notes.
-- `FlexiGrid_AI_Submission_Package.zip` — reproducible source, frozen fixture and tests.
-- `FlexiGrid_AI_Demo_and_Defense.md` — live-demo script and examiner Q&A.
+- `FlexiGrid_AI_Technical_Report.pdf` — primary report (regenerated from `docs/build_report.py`).
+- `FlexiGrid_AI_Technical_Report.docx` — editable source of the same report.
+- `FlexiGrid_AI_Defense_Deck.pptx` — 9-slide deck with speaker notes (regenerated from `docs/build_deck.py`).
+- `FlexiGrid_AI_Submission_Package.zip` — full source, corpus, fixtures, tests, evaluation harness.
+- `docs/DEMO_AND_DEFENSE.md` — live-demo script and examiner Q&A.
 
 ## Before uploading
 
-1. Replace every `project partner` placeholder in the report and presentation with the second student's real name.
-2. Confirm both students' names, class and academic year on the title page.
-3. Open the hosted app and run **Morning → Balanced → Run agent plan**.
-4. Confirm the status is **Verified**, all four constraints pass and the evidence/tool traces open.
-5. Keep the report PDF open locally as the offline demo backup.
+1. Replace every `project partner` placeholder (report cover + deck title slide) with the second student's real name — or attach the instructor's solo approval.
+2. On the demo machine: `ollama pull qwen2.5:3b-instruct && ollama pull nomic-embed-text`.
+3. Run `cd backend && python -m flexigrid.doctor` — every check must PASS with the real model.
+4. Regenerate the measured numbers **on the demo machine** so provenance names your hardware and model:
 
-## Reproduce the prototype
+   ```bash
+   cd backend && python -m flexigrid.evaluate
+   python ../docs/build_report.py
+   python ../docs/build_deck.py
+   ```
 
-```bash
-npm ci
-npm test
-npm run lint
-
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m unittest discover -s tests -v
-```
-
-Run the optional Python API with `uvicorn flexigrid.api:app --reload`. The model key is optional; without one, the validated deterministic explanation fallback remains functional.
+5. Run both test suites: `python -m unittest discover -s tests -v` (85) and `npm test` (8).
+6. Start everything and rehearse the five-step demo script once end-to-end, including the impossible-mission rejection and the MCP terminal run.
+7. Export the report DOCX to PDF (or `soffice --headless --convert-to pdf`) if you edited it by hand.
 
 ## Claims safe to defend
 
-- The bounded demo uses lexical RAG, typed MCP-style tools, joint constrained search, a critic and optional schema-constrained generation.
-- The frozen stress signal is representative demo data shaped around Elia dataset contracts, not a live Elia measurement.
-- The reported figures are deterministic acceptance-test results for the labelled fixture, not a general LLM benchmark.
-- Live normalization, 30+ held-out prompts and a production-scale MILP or CP-SAT optimizer are future validation work.
+- The mission text is load-bearing: a local LLM extracts typed constraints, and a sanitizer clamps them (adjustments visible in the trace).
+- A genuine agent loop chooses real MCP tools; guardrail interventions are labelled, counted and tested.
+- Retrieval is hybrid (BM25 + dense + RRF) over a 51-chunk labelled corpus, with a 40-query measured benchmark.
+- The critic's necessity is quantified: LLM-only scheduling (Baseline B) violates constraints; the deterministic planner does not.
+- The greedy ablation fails outright on the standard morning mission; joint search never fails.
+- The stress signal is derived from Elia ods002+ods086 by tested code; the exam fixture is labelled, not passed off as live.
+- All 93 tests and the full evaluation run offline; every number records which model and embedding backend produced it.
+
+## Claims to avoid
+
+- Any general LLM benchmark claim beyond the named local model.
+- "Live Elia data" during the demo unless `ELIA_USE_LIVE=true` is actually set.
+- Any suggestion that the system controls physical devices.

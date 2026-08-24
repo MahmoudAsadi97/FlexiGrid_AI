@@ -1,0 +1,117 @@
+{
+  "environment": {
+    "generated_at": "2026-08-24T12:07:24+00:00",
+    "llm_model": "mock-planner-1",
+    "llm_base_url": "http://127.0.0.1:11435/v1",
+    "embeddings_backend": "ollama",
+    "embeddings_model": "mock-embed",
+    "corpus_chunks": 51,
+    "corpus_fingerprint": "abab97f149a33e3a"
+  },
+  "retrieval": {
+    "bm25": {
+      "queries": 40,
+      "hit_at_1": 0.95,
+      "recall_at_4": 0.988,
+      "mrr": 0.969
+    },
+    "dense": {
+      "queries": 40,
+      "hit_at_1": 0.65,
+      "recall_at_4": 0.9,
+      "mrr": 0.762
+    },
+    "hybrid": {
+      "queries": 40,
+      "hit_at_1": 0.875,
+      "recall_at_4": 0.988,
+      "mrr": 0.938
+    },
+    "backend": {
+      "name": "ollama",
+      "model": "mock-embed"
+    }
+  },
+  "intent": {
+    "rules": {
+      "missions": 15,
+      "exact_match": 0.733,
+      "per_field": {
+        "devices": 0.933,
+        "deadline": 0.933,
+        "objective": 0.867,
+        "max_load_kw": 1.0,
+        "avoid_hours": 1.0
+      },
+      "failures": []
+    },
+    "llm": {
+      "missions": 15,
+      "exact_match": 0.733,
+      "per_field": {
+        "devices": 0.933,
+        "deadline": 0.933,
+        "objective": 0.867,
+        "max_load_kw": 1.0,
+        "avoid_hours": 1.0
+      },
+      "failures": []
+    }
+  },
+  "llm_only_baseline": {
+    "model": "mock-planner-1",
+    "attempts": 9,
+    "constraint_valid_rate": 0.333,
+    "violation_or_failure_rate": 0.667,
+    "schema_failures": 0,
+    "avg_cost_gap_eur_when_valid": -0.21
+  },
+  "greedy_ablation": {
+    "cases": [
+      {
+        "case": "morning",
+        "joint_cost_eur": 1.79,
+        "greedy_cost_eur": null,
+        "greedy_valid": false
+      },
+      {
+        "case": "grid-friendly",
+        "joint_cost_eur": 1.37,
+        "greedy_cost_eur": 1.37,
+        "greedy_valid": true
+      },
+      {
+        "case": "peak-avoidance",
+        "joint_cost_eur": 1.84,
+        "greedy_cost_eur": 1.84,
+        "greedy_valid": true
+      },
+      {
+        "case": "tight-window (cost)",
+        "joint_cost_eur": 1.87,
+        "greedy_cost_eur": null,
+        "greedy_valid": false
+      },
+      {
+        "case": "tight-window (balanced)",
+        "joint_cost_eur": 1.87,
+        "greedy_cost_eur": null,
+        "greedy_valid": false
+      }
+    ],
+    "greedy_failures": 3,
+    "joint_failures": 0
+  },
+  "agent_properties": {
+    "citation_precision": 1.0,
+    "explanations_rejected_by_guard": 0,
+    "deterministic_plan_replay": true,
+    "agent_runs": 3,
+    "all_plans_valid": true,
+    "explanation_modes": [
+      "llm",
+      "llm",
+      "llm"
+    ]
+  }
+}
