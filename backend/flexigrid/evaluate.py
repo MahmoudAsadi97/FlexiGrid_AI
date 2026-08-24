@@ -159,7 +159,9 @@ _BASELINE_SYSTEM = (
 def evaluate_llm_only_baseline(llm: LocalLLM | None, use_llm: bool,
                                runs_per_scenario: int = 3) -> dict:
     if not (use_llm and llm is not None and llm.available()):
-        return {"skipped": "no LLM endpoint reachable"}
+        return {"skipped": "requires the local model — run this harness on the "
+                           "demo machine with Ollama serving; results are "
+                           "stamped with that machine's model"}
     tariff, stress, _ = EliaClient().series(use_live=False)
     scenarios = {
         "morning": "Charge the EV, run laundry and dishwasher before 07:00. "
@@ -349,7 +351,8 @@ def render_markdown(results: dict) -> str:
         "machine named above; re-run it after changing models to refresh "
         "every table.",
         "",
-        "## 1. Retrieval (40 labelled queries, doc-level relevance)",
+        f"## 1. Retrieval ({results['retrieval']['bm25']['queries']} labelled "
+        f"queries, doc-level relevance)",
         "",
         "| Mode | hit@1 | recall@4 | MRR |",
         "| --- | ---: | ---: | ---: |",
@@ -368,6 +371,10 @@ def render_markdown(results: dict) -> str:
             f"| {mode} | {row['exact_match']:.3f} | {fields.get('devices', 0):.3f} | "
             f"{fields.get('deadline', 0):.3f} | {fields.get('objective', 0):.3f} | "
             f"{fields.get('max_load_kw', 0):.3f} | {fields.get('avoid_hours', 0):.3f} |")
+    if "llm" not in results["intent"]:
+        lines.append("")
+        lines.append("_The LLM extractor row is added when the harness runs "
+                     "with the local model available._")
     baseline = results["llm_only_baseline"]
     lines += ["", "## 3. Baseline B — LLM-only scheduling (no optimizer)", ""]
     if "skipped" in baseline:

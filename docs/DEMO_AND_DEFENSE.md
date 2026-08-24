@@ -1,6 +1,6 @@
 # FlexiGrid AI — 10-minute demo and defense guide
 
-## Before the room fills up
+## Pre-demo setup
 
 ```bash
 ollama serve                                   # local model runtime
@@ -16,7 +16,7 @@ The top bar must read **Live pipeline · qwen2.5:3b-instruct**. Keep one termina
 | Time | Slide / action | Key message |
 |---|---|---|
 | 0:00–0:45 | Title | A local model interprets and explains; deterministic code owns feasibility; every claim is a measured number. |
-| 0:45–1:45 | Problem | Deadlines + comfort + the Flemish capacity tariff. The hook: we measured LLM-only scheduling — show the violation rate. |
+| 0:45–1:45 | Problem | Deadlines, comfort, and the Flemish capacity tariff. Present the measured LLM-only scheduling result (Baseline B) as the motivation for the architecture. |
 | 1:45–3:00 | Data | Elia ods002/ods086/ods201, the tested stress derivation, the labelled fixture, and the 51-chunk corpus with distractors. |
 | 3:00–4:30 | Architecture + techniques | Five stages; guardrails visible in the trace; one tool registry over MCP; each course technique load-bearing, exclusions argued. |
 | 4:30–5:15 | Algorithm | Joint constrained search; the greedy ablation fails the morning mission outright — measured, not anecdotal. |
@@ -56,7 +56,7 @@ The retriever returns stable chunk IDs; the explanation schema is validated; the
 
 ### Why not let the LLM schedule directly?
 
-We measured it (Baseline B): with tasks, windows, tariff and cap in the prompt, the model's schedules violate constraints or fail schema validation in a majority of attempts, while the deterministic search never does. Locally plausible, globally capacity-blind.
+Because it is a measured question, not a matter of taste. Baseline B gives the model the tasks, windows, tariff and capacity cap in the prompt — everything except the optimizer — and validates its direct schedules. The violation-or-failure rate for the defense machine's model is recorded in `evaluation/RESULTS.md` with full provenance; the deterministic search records zero violations under identical conditions. Direct model schedules are locally plausible but globally capacity-blind.
 
 ### Why exhaustive search? What about scale?
 
@@ -68,7 +68,7 @@ Raw quarter-hour records from ods002 (load) and ods086 (wind) via the official v
 
 ### Where would fine-tuning fit? Why no diffusion/multimodal?
 
-The intent evaluation shows the residual a LoRA would target (per-task deadlines, unusual phrasing); we fine-tune when extraction is the measured bottleneck, not before. Diffusion and multimodal are excluded with an argument: the problem has no image/audio modality and no generative-sampling need — including them would be technique tourism.
+The intent evaluation shows the residual a LoRA fine-tune would target (per-task deadlines, unusual phrasing); fine-tuning is scheduled for when extraction is the measured bottleneck, not before. Diffusion and multimodal models are excluded with an explicit argument: the problem contains no image or audio modality and no generative-sampling need, so they would add scope without a role this problem can justify.
 
 ### Are the results scientifically generalizable?
 
@@ -84,7 +84,7 @@ Per the report's collaboration table — data/backend vs interface/evaluation, d
 
 ## Recovery plan
 
-- Ollama down → the pipeline runs in labelled deterministic mode; say so out loud and continue — the guardrail story still lands.
+- Ollama down → the pipeline runs in labelled deterministic mode; state the fallback explicitly and continue — graceful degradation is part of the design.
 - Backend down → the interface shows "Offline simulation" and replays the browser engine; switch to the MCP terminal demo.
 - Everything down → the report PDF and the deck's evaluation slide carry the measured numbers.
 - Never claim: live Elia observation during the demo (unless `ELIA_USE_LIVE` is actually on), device control, or a general LLM benchmark.

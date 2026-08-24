@@ -236,26 +236,29 @@ def build() -> None:
     slide = _slide(prs, "PROBLEM", "A fluent answer can still be an invalid schedule", (
         "60s. The household problem: EV, heat pump, appliances; deadlines, "
         "comfort, and the Flemish capacity tariff, where one bad quarter-hour "
-        "raises the bill for twelve months. Then the hook: we measured what "
-        "happens when you let the language model schedule directly — the "
-        "violation number on the right. That number is why this architecture "
-        "exists."))
+        "raises the bill for twelve months. Then present the measurement: "
+        "Baseline B lets the language model schedule directly, and its "
+        "violation rate motivates the entire architecture."))
     _bullets(slide, [
         ("Real constraints", "deadlines, 19–21 °C comfort, and a 4.6 kW cap under "
          "the Flemish capacity tariff — one violating hour costs money for a year"),
         ("Real data semantics", "Elia imbalance prices are not consumer prices; "
          "a planner that confuses them gives financially wrong advice"),
         ("The failure mode", "chat assistants produce locally plausible, "
-         "globally capacity-blind schedules — fluent text, invalid physics"),
+         "globally capacity-blind schedules — fluent text, infeasible plans"),
     ], Inches(.65), Inches(2.0), Inches(7.3), size=14)
     card = _card(slide, Inches(8.3), Inches(2.0), Inches(4.35), Inches(3.4), fill=INK)
     frame = card.text_frame; frame.margin_left = Inches(.3); frame.margin_top = Inches(.28)
     frame.word_wrap = True
+    baseline_rate = rget(["llm_only_baseline", "violation_or_failure_rate"], "")
     p = frame.paragraphs[0]; run = p.add_run()
-    run.text = rget(["llm_only_baseline", "violation_or_failure_rate"], "0.67")
-    run.font.size = Pt(48); run.font.bold = True; run.font.color.rgb = LIME
+    run.text = baseline_rate if baseline_rate not in ("", "—") else "Baseline B"
+    run.font.size = Pt(48 if baseline_rate not in ("", "—") else 30)
+    run.font.bold = True; run.font.color.rgb = LIME
     p = frame.add_paragraph(); run = p.add_run()
-    run.text = "violation-or-failure rate when the LLM schedules directly"
+    run.text = ("violation-or-failure rate when the LLM schedules directly"
+                if baseline_rate not in ("", "—")
+                else "LLM-only scheduling, measured on the demo machine")
     run.font.size = Pt(13); run.font.bold = True; run.font.color.rgb = WHITE
     p = frame.add_paragraph(); run = p.add_run()
     run.text = ("Baseline B, measured by python -m flexigrid.evaluate — same "
@@ -322,7 +325,7 @@ def build() -> None:
         run.font.size = Pt(10); run.font.color.rgb = RGBColor(0xA9, 0xBB, 0xB4) if dark else MUTED
         x = Emu(int(x) + int(Inches(2.28)) + int(Inches(.14)))
     _bullets(slide, [
-        ("Guardrails, not hope", "schema-validated decisions, bounded steps, repeated tools "
+        ("Guardrails by design", "schema-validated decisions, bounded steps, repeated tools "
          "overruled, skipped stages completed deterministically — all visible in the trace"),
         ("One tool registry", "FastMCP server, real MCP stdio host, and the API share the "
          "same five typed contracts — swap the transport, keep the behaviour"),
@@ -336,9 +339,9 @@ def build() -> None:
         "schema-constrained decoding and a repair loop. Agent: the model "
         "chooses the tools. RAG: hybrid BM25 plus dense with rank fusion, "
         "three switchable modes. MCP: real server, real client session. "
-        "Fine-tuning, diffusion, multimodal: excluded with an argument, not "
-        "ignored — and the intent ablation shows exactly where a LoRA would "
-        "slot in if extraction became the bottleneck."))
+        "Fine-tuning, diffusion, multimodal: excluded with an explicit "
+        "argument — and the intent ablation shows exactly where a LoRA "
+        "fine-tune would apply if extraction became the bottleneck."))
     _table(slide, ["Technique", "Where it runs", "Proof it matters"],
            [
                ["Transformer (local)", "Qwen2.5-3B-Instruct via Ollama — intent, decisions, explanation",
@@ -350,13 +353,15 @@ def build() -> None:
                ["MCP", "FastMCP server + stdio client host",
                 "same agent, same tools, real protocol session"],
                ["Deterministic critic", "joint search + independent validator",
-                f"LLM-only baseline fails {rget(['llm_only_baseline', 'violation_or_failure_rate'], '—')} of runs; critic: 0"],
+                (f"LLM-only baseline fails {rget(['llm_only_baseline', 'violation_or_failure_rate'])} of runs; critic: 0"
+                 if rget(['llm_only_baseline', 'violation_or_failure_rate'], '') not in ('', '—')
+                 else "LLM-only baseline measured on the demo machine; critic: 0 violations")],
            ],
            Inches(.65), Inches(2.05), Inches(12.05), [2.4, 4.4, 4.3], size=12)
     _text(slide, Inches(.65), Inches(5.6), Inches(12), Inches(1.2),
-          "Excluded with argument: fine-tuning (LoRA on intent extraction is the named next step once "
-          "prompting is the measured bottleneck), diffusion and multimodal (no image/audio modality in "
-          "the problem — including them would be technique tourism).",
+          "Excluded with an explicit argument: fine-tuning (a LoRA pass on intent extraction is the "
+          "named next step once prompting is the measured bottleneck); diffusion and multimodal models "
+          "(no image or audio modality in the problem — they would add scope without a justified role).",
           size=12.5, color=MUTED)
 
     # 6 ── Algorithm ------------------------------------------------------
@@ -395,7 +400,7 @@ def build() -> None:
         "with sanitizer notes, five tool calls with milliseconds and the "
         "llm/guardrail column, retrieval scores, the model's cited "
         "explanation. 3) edit the mission live — move the deadline, add "
-        "avoid-hours — schedule follows. 4) type the impossible mission — "
+        "avoid-hours — the schedule follows. 4) submit an infeasible mission — "
         "critic rejects it, nothing is displayed. 5) terminal: python -m "
         "flexigrid.mcp_host shows the same agent over a real MCP session. "
         "Fallback if anything dies: offline mode is clearly labelled and the "
@@ -404,7 +409,7 @@ def build() -> None:
         ("1", "Live badge", "backend chip names the model, embeddings and corpus — no simulation"),
         ("2", "Run the mission", "trace: intent chips → 5 tool calls (ms, llm/guardrail) → cited explanation"),
         ("3", "Edit the text", "change deadline / avoid-hours — the free text visibly drives the plan"),
-        ("4", "Break it on purpose", "impossible mission → the critic rejects; no invalid plan is ever shown"),
+        ("4", "Demonstrate rejection", "infeasible mission → the critic rejects it; no invalid plan is ever shown"),
         ("5", "MCP terminal", "python -m flexigrid.mcp_host — same agent over a real stdio session"),
     ]
     y = Inches(2.05)
@@ -447,7 +452,8 @@ def build() -> None:
     _table(slide, ["Property", "Result"],
            [
                ["Intent exact-match (rules ablation)", rget(["intent", "rules", "exact_match"])],
-               ["LLM-only scheduling violations (Baseline B)", rget(["llm_only_baseline", "violation_or_failure_rate"], "—")],
+               ["LLM-only scheduling violations (Baseline B)",
+                rget(["llm_only_baseline", "violation_or_failure_rate"], "pending demo-machine run")],
                ["Citation precision (allow-list)", rget(["agent_properties", "citation_precision"])],
                ["Deterministic replay", "pass" if rget(["agent_properties", "deterministic_plan_replay"]) == "True" else rget(["agent_properties", "deterministic_plan_replay"])],
                ["Constraint validity, end-to-end", "all plans valid" if rget(["agent_properties", "all_plans_valid"]) == "True" else rget(["agent_properties", "all_plans_valid"])],
@@ -463,13 +469,14 @@ def build() -> None:
         "why the critic must exist. Next: LoRA for intent once it is the "
         "measured bottleneck, MILP at scale, a broader mission set with "
         "confidence intervals, carbon-aware objective from ods201. Close by "
-        "inviting questions on any layer — both of us can walk every file."),
+        "inviting questions on any layer — both team members can explain "
+        "every component."),
         dark=True)
     _text(slide, Inches(.65), Inches(2.1), Inches(5.6), Inches(.5),
           "PROVEN NOW", size=13, color=LIME, bold=True, font="Consolas")
     _bullets(slide, [
         "Free-text missions → typed constraints → validated plans, fully local",
-        "A real agent over real MCP tools, guardrails measured under rogue tests",
+        "A real agent over real MCP tools; guardrails verified by adversarial tests",
         "Hybrid RAG with stable citations and a 40-query labelled benchmark",
         "The critic's necessity quantified by the LLM-only baseline",
         "93 tests, mock-model CI harness, every number with provenance",

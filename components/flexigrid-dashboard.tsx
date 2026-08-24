@@ -733,7 +733,7 @@ function ArchitectureView() {
         <div><span className="decision-label">WHY A LOCAL LLM</span><h3>Private, free, reproducible.</h3><p>Household data never leaves the machine, the demo needs no cloud key, and the same OpenAI-compatible client works with any endpoint.</p></div>
         <div><span className="decision-label">WHY HYBRID RAG</span><h3>Lexical precision + semantic recall.</h3><p>BM25 and dense embeddings are fused by reciprocal rank; the evaluation reports each mode separately.</p></div>
         <div><span className="decision-label">WHY MCP</span><h3>Tools remain swappable and inspectable.</h3><p>The same registry serves the in-process agent, the stdio MCP server, and any external MCP host.</p></div>
-        <div><span className="decision-label">WHY A CRITIC</span><h3>Physics is not negotiable.</h3><p>Every schedule is re-validated hour by hour before display; the model can propose, never approve.</p></div>
+        <div><span className="decision-label">WHY A CRITIC</span><h3>Feasibility is not negotiable.</h3><p>Every schedule is re-validated hour by hour before display; the model can propose, never approve.</p></div>
       </section>
     </div>
   );

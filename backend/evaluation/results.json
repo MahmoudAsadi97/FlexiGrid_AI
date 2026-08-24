@@ -1,10 +1,10 @@
 {
   "environment": {
-    "generated_at": "2026-08-24T12:07:24+00:00",
-    "llm_model": "mock-planner-1",
-    "llm_base_url": "http://127.0.0.1:11435/v1",
-    "embeddings_backend": "ollama",
-    "embeddings_model": "mock-embed",
+    "generated_at": "2026-08-24T12:18:23+00:00",
+    "llm_model": null,
+    "llm_base_url": null,
+    "embeddings_backend": "tfidf",
+    "embeddings_model": "tfidf-svd-128",
     "corpus_chunks": 51,
     "corpus_fingerprint": "abab97f149a33e3a"
   },
@@ -17,19 +17,19 @@
     },
     "dense": {
       "queries": 40,
-      "hit_at_1": 0.65,
-      "recall_at_4": 0.9,
-      "mrr": 0.762
+      "hit_at_1": 0.95,
+      "recall_at_4": 0.988,
+      "mrr": 0.967
     },
     "hybrid": {
       "queries": 40,
-      "hit_at_1": 0.875,
+      "hit_at_1": 0.95,
       "recall_at_4": 0.988,
-      "mrr": 0.938
+      "mrr": 0.971
     },
     "backend": {
-      "name": "ollama",
-      "model": "mock-embed"
+      "name": "tfidf",
+      "model": "tfidf-svd-128"
     }
   },
   "intent": {
@@ -44,27 +44,10 @@
         "avoid_hours": 1.0
       },
       "failures": []
-    },
-    "llm": {
-      "missions": 15,
-      "exact_match": 0.733,
-      "per_field": {
-        "devices": 0.933,
-        "deadline": 0.933,
-        "objective": 0.867,
-        "max_load_kw": 1.0,
-        "avoid_hours": 1.0
-      },
-      "failures": []
     }
   },
   "llm_only_baseline": {
-    "model": "mock-planner-1",
-    "attempts": 9,
-    "constraint_valid_rate": 0.333,
-    "violation_or_failure_rate": 0.667,
-    "schema_failures": 0,
-    "avg_cost_gap_eur_when_valid": -0.21
+    "skipped": "requires the local model \u2014 run this harness on the demo machine with Ollama serving; results are stamped with that machine's model"
   },
   "greedy_ablation": {
     "cases": [
@@ -109,9 +92,9 @@
     "agent_runs": 3,
     "all_plans_valid": true,
     "explanation_modes": [
-      "llm",
-      "llm",
-      "llm"
+      "deterministic",
+      "deterministic",
+      "deterministic"
     ]
   }
 }

@@ -30,7 +30,7 @@
 - The mission text is load-bearing: a local LLM extracts typed constraints, and a sanitizer clamps them (adjustments visible in the trace).
 - A genuine agent loop chooses real MCP tools; guardrail interventions are labelled, counted and tested.
 - Retrieval is hybrid (BM25 + dense + RRF) over a 51-chunk labelled corpus, with a 40-query measured benchmark.
-- The critic's necessity is quantified: LLM-only scheduling (Baseline B) violates constraints; the deterministic planner does not.
+- The critic's necessity is quantified by Baseline B (LLM-only scheduling); quote the rate recorded in `evaluation/RESULTS.md` from your own demo-machine run.
 - The greedy ablation fails outright on the standard morning mission; joint search never fails.
 - The stress signal is derived from Elia ods002+ods086 by tested code; the exam fixture is labelled, not passed off as live.
 - All 93 tests and the full evaluation run offline; every number records which model and embedding backend produced it.

@@ -102,7 +102,7 @@ python -m unittest discover -s tests -v   # 85 tests: optimizer, retrieval,
                                           # API, MCP stdio round-trip, derivation
 ```
 
-A deterministic mock LLM server (`backend/flexigrid/dev_mock_llm.py`) ships with the repo, so the complete agent code path — including malformed-JSON repair and rogue-decision guardrails — is tested on machines with no model weights.
+A deterministic reference LLM server (`backend/flexigrid/dev_mock_llm.py`) ships with the repository, so the complete agent code path — including malformed-JSON repair and the guardrails against non-compliant agent decisions — is tested on machines without model weights.
 
 ## Evaluation
 
@@ -129,4 +129,4 @@ Measured per subsystem: retrieval (40 labelled queries; hit@1 / recall@4 / MRR f
 - [Defense deck — PPTX](deliverables/FlexiGrid_AI_Defense_Deck.pptx) with speaker notes (regenerate: `python docs/build_deck.py`)
 - [Demo & examiner Q&A guide](docs/DEMO_AND_DEFENSE.md) · [Submission checklist](docs/SUBMISSION_CHECKLIST.md)
 
-Before submitting, replace the `project partner` placeholder in the report and deck with the second student's name (or your instructor's solo approval).
+Before formal submission, complete the author line on the report cover and deck title slide; the full pre-submission procedure is in [docs/SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md).
