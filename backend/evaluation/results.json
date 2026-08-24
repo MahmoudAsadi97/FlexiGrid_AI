@@ -1,10 +1,10 @@
 {
   "environment": {
-    "generated_at": "2026-08-24T12:18:23+00:00",
-    "llm_model": null,
-    "llm_base_url": null,
-    "embeddings_backend": "tfidf",
-    "embeddings_model": "tfidf-svd-128",
+    "generated_at": "2026-08-24T17:04:15+00:00",
+    "llm_model": "qwen2.5:3b-instruct",
+    "llm_base_url": "http://localhost:11434/v1",
+    "embeddings_backend": "ollama",
+    "embeddings_model": "nomic-embed-text",
     "corpus_chunks": 51,
     "corpus_fingerprint": "abab97f149a33e3a"
   },
@@ -17,19 +17,19 @@
     },
     "dense": {
       "queries": 40,
-      "hit_at_1": 0.95,
+      "hit_at_1": 0.975,
       "recall_at_4": 0.988,
-      "mrr": 0.967
+      "mrr": 0.988
     },
     "hybrid": {
       "queries": 40,
-      "hit_at_1": 0.95,
+      "hit_at_1": 0.975,
       "recall_at_4": 0.988,
-      "mrr": 0.971
+      "mrr": 0.988
     },
     "backend": {
-      "name": "tfidf",
-      "model": "tfidf-svd-128"
+      "name": "ollama",
+      "model": "nomic-embed-text"
     }
   },
   "intent": {
@@ -44,10 +44,27 @@
         "avoid_hours": 1.0
       },
       "failures": []
+    },
+    "llm": {
+      "missions": 15,
+      "exact_match": 0.267,
+      "per_field": {
+        "devices": 0.6,
+        "deadline": 0.733,
+        "objective": 0.8,
+        "max_load_kw": 1.0,
+        "avoid_hours": 0.667
+      },
+      "failures": []
     }
   },
   "llm_only_baseline": {
-    "skipped": "requires the local model \u2014 run this harness on the demo machine with Ollama serving; results are stamped with that machine's model"
+    "model": "qwen2.5:3b-instruct",
+    "attempts": 9,
+    "constraint_valid_rate": 0.667,
+    "violation_or_failure_rate": 0.333,
+    "schema_failures": 0,
+    "avg_cost_gap_eur_when_valid": 0.4
   },
   "greedy_ablation": {
     "cases": [
@@ -87,14 +104,14 @@
   },
   "agent_properties": {
     "citation_precision": 1.0,
-    "explanations_rejected_by_guard": 0,
+    "explanations_rejected_by_guard": 1,
     "deterministic_plan_replay": true,
     "agent_runs": 3,
     "all_plans_valid": true,
     "explanation_modes": [
-      "deterministic",
-      "deterministic",
-      "deterministic"
+      "llm",
+      "llm",
+      "fallback-after-llm"
     ]
   }
 }

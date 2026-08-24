@@ -1,6 +1,6 @@
 # FlexiGrid evaluation results
 
-Generated 2026-08-24T12:18:23+00:00 · LLM: **none (deterministic fallback)** · embeddings: **tfidf (tfidf-svd-128)** · corpus 51 chunks.
+Generated 2026-08-24T17:04:15+00:00 · LLM: **qwen2.5:3b-instruct** · embeddings: **ollama (nomic-embed-text)** · corpus 51 chunks.
 
 Numbers below are produced by `python -m flexigrid.evaluate` on the machine named above; re-run it after changing models to refresh every table.
 
@@ -9,20 +9,24 @@ Numbers below are produced by `python -m flexigrid.evaluate` on the machine name
 | Mode | hit@1 | recall@4 | MRR |
 | --- | ---: | ---: | ---: |
 | bm25 | 0.950 | 0.988 | 0.969 |
-| dense | 0.950 | 0.988 | 0.967 |
-| hybrid | 0.950 | 0.988 | 0.971 |
+| dense | 0.975 | 0.988 | 0.988 |
+| hybrid | 0.975 | 0.988 | 0.988 |
 
 ## 2. Intent extraction (15 labelled missions)
 
 | Extractor | exact match | devices | deadline | objective | cap | avoid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | rules | 0.733 | 0.933 | 0.933 | 0.867 | 1.000 | 1.000 |
-
-_The LLM extractor row is added when the harness runs with the local model available._
+| llm | 0.267 | 0.600 | 0.733 | 0.800 | 1.000 | 0.667 |
 
 ## 3. Baseline B — LLM-only scheduling (no optimizer)
 
-_Skipped: requires the local model — run this harness on the demo machine with Ollama serving; results are stamped with that machine's model._
+Model: qwen2.5:3b-instruct, 9 attempts.
+
+- Constraint-valid rate: **0.667**
+- Violation/failure rate: **0.333**
+- Schema failures: 0
+- Avg cost gap vs optimizer when valid: 0.4 €
 
 ## 4. Ablation — greedy vs joint constrained search
 
@@ -39,7 +43,7 @@ Greedy failed outright on 3 case(s); joint search failed on 0.
 ## 5. Agent properties
 
 - Citation precision vs retrieved allow-list: **1.000**
-- Explanations rejected by the citation guard: 0
+- Explanations rejected by the citation guard: 1
 - Deterministic replay (identical plans): **yes**
 - All 3 end-to-end plans valid: **yes**
-- Explanation modes: deterministic, deterministic, deterministic
+- Explanation modes: llm, llm, fallback-after-llm
