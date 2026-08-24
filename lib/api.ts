@@ -59,7 +59,8 @@ export type BackendPlan = {
   total_cost_eur: number;
   average_grid_stress: number;
   peak_load_kw: number;
-  baseline?: BackendPlan;
+  baseline?: BackendPlan | null;
+  baseline_note?: string;
   snapshot_mode?: string;
   tariff?: number[];
   stress?: number[];

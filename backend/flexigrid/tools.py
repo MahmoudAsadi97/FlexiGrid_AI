@@ -70,10 +70,21 @@ def optimize_schedule(spec: dict[str, Any] | None = None,
                              avoid_hours=avoid)
     plan = core.plan_to_dict(schedule, chosen_objective,  # type: ignore[arg-type]
                              max_load_kw=max_load, avoid_hours=avoid)
-    baseline = core.earliest_start_schedule(tasks, max_load_kw=max_load,
-                                            tariff=tariff, stress=stress)
-    plan["baseline"] = core.plan_to_dict(baseline, chosen_objective,  # type: ignore[arg-type]
-                                         max_load_kw=max_load, avoid_hours=avoid)
+    # The earliest-start baseline is a comparison, never a gate: on tightly
+    # pinned missions the naive baseline can be infeasible while the joint
+    # search still finds a valid schedule — report that instead of failing.
+    try:
+        baseline = core.earliest_start_schedule(tasks, max_load_kw=max_load,
+                                                tariff=tariff, stress=stress)
+        plan["baseline"] = core.plan_to_dict(
+            baseline, chosen_objective,  # type: ignore[arg-type]
+            max_load_kw=max_load, avoid_hours=avoid)
+    except core.InfeasibleMission as error:
+        plan["baseline"] = None
+        plan["baseline_note"] = (
+            f"The naive earliest-start baseline cannot satisfy this mission "
+            f"({error}); only the joint constrained search finds a valid "
+            f"schedule.")
     plan["snapshot_mode"] = snapshot_mode
     plan["tariff"] = tariff
     plan["stress"] = stress

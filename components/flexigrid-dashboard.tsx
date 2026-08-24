@@ -87,6 +87,7 @@ type ViewPlan = {
   capKw: number;
   tariff: number[];
   stress: number[];
+  baselineNote?: string;
 };
 
 function fromOffline(scenarioId: string, objective: Objective): ViewPlan {
@@ -161,6 +162,7 @@ function fromLive(run: AgentRunResponse): ViewPlan {
     capKw: validation.max_load_kw,
     tariff: plan.tariff ?? fixtureTariff,
     stress: plan.stress ?? fixtureStress,
+    baselineNote: plan.baseline_note,
   };
 }
 
@@ -421,8 +423,8 @@ function PlanView({ health }: { health: BackendHealth | null }) {
         <div className="stats-grid" aria-label="Plan outcome metrics">
           <article className="metric-card primary-metric">
             <span>Estimated energy cost</span>
-            <strong>{formatEuro(showBaseline ? plan.baselineCost : plan.totalCost)}</strong>
-            <em>{signedPercent(plan.savingsPercent)} vs earliest-start</em>
+            <strong>{formatEuro(showBaseline && plan.baseline.length ? plan.baselineCost : plan.totalCost)}</strong>
+            <em>{plan.baselineNote ? "naive baseline infeasible" : `${signedPercent(plan.savingsPercent)} vs earliest-start`}</em>
           </article>
           <article className="metric-card">
             <span>Grid-stress index</span>
@@ -573,9 +575,32 @@ function PlanView({ health }: { health: BackendHealth | null }) {
                   <strong>Critic verdict</strong>
                   <p>{plan.checks.every((check) => check.ok)
                     ? `All ${plan.checks.length} checks passed: ${plan.checks.map((check) => check.label).join(", ")}.`
-                    : `Flagged: ${plan.checks.filter((check) => !check.ok).map((check) => check.label).join(", ")}.`}</p>
+                    : `Flagged: ${plan.checks.filter((check) => !check.ok).map((check) => check.label).join(", ")}.`}
+                    {plan.baselineNote ? ` ${plan.baselineNote}` : ""}</p>
                 </div>
               </div>
+            </>
+          ) : phase === "running" && live ? (
+            <>
+              <div className="mode-strip">
+                <span className="mode-badge llm"><Icon name="cpu" /> live backend — agent running</span>
+              </div>
+              <p className="offline-note">
+                The local model is extracting constraints, calling tools, and
+                validating the schedule. The full trace appears here when the
+                run completes.
+              </p>
+            </>
+          ) : phase === "error" && live ? (
+            <>
+              <div className="mode-strip">
+                <span className="mode-badge det"><Icon name="shield" /> live backend — mission rejected</span>
+              </div>
+              <p className="offline-note">
+                The critic refused to display an invalid schedule — see the
+                message on the left. Widen a time window, raise the capacity
+                cap, or remove a device, then run again.
+              </p>
             </>
           ) : (
             <>
