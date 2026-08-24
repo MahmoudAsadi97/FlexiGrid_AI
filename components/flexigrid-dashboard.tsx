@@ -1039,15 +1039,25 @@ export default function FlexiGridDashboard() {
   const [health, setHealth] = useState<BackendHealth | null>(null);
   const [checking, setChecking] = useState(true);
 
+  // Keep probing until the backend appears, so the start order of browser,
+  // API, and Ollama never matters: the chip flips to live on its own instead
+  // of demanding a reload — one less way for a stage demo to go wrong.
   useEffect(() => {
     let cancelled = false;
-    fetchHealth().then((result) => {
-      if (!cancelled) {
-        setHealth(result);
+    let timer: number | null = null;
+    const probe = () => {
+      fetchHealth().then((result) => {
+        if (cancelled) return;
         setChecking(false);
-      }
-    });
-    return () => { cancelled = true; };
+        setHealth(result);
+        if (!result) timer = window.setTimeout(probe, 4000);
+      });
+    };
+    probe();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, []);
 
   return (
