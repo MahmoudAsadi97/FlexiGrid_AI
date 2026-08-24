@@ -865,7 +865,10 @@ function EvaluationView() {
 
   const data = measured ?? FALLBACK_EVAL;
   const hybrid = data.retrieval.hybrid;
-  const extractorName = data.intent["llm"] ? "llm" : "rules";
+  const rulesIntent = data.intent["rules"];
+  const llmIntent = data.intent["llm"];
+  const intentAblation = Boolean(rulesIntent && llmIntent);
+  const extractorName = llmIntent ? "llm" : "rules";
   const extractor = data.intent[extractorName];
   const baseline = data.llm_only_baseline;
   const ablation = data.greedy_ablation;
@@ -890,13 +893,17 @@ function EvaluationView() {
       <section className="benchmark-grid">
         <article>
           <span>Retrieval · hybrid</span>
-          <strong>{percent(hybrid?.hit_at_1)}</strong>
+          <strong>{percent(hybrid?.hit_at_1, 1)}</strong>
           <p>hit@1 on {hybrid?.queries ?? 40} labelled queries · recall@4 {percent(hybrid?.recall_at_4, 1)} · MRR {hybrid?.mrr ?? "—"}</p>
         </article>
         <article>
-          <span>Intent · {extractorName}</span>
-          <strong>{percent(extractor?.exact_match)}</strong>
-          <p>exact-match on {extractor?.missions ?? 15} labelled missions · devices {percent(extractor?.per_field?.devices)} · cap {percent(extractor?.per_field?.max_load_kw)}</p>
+          <span>{intentAblation ? "Intent · rules vs LLM" : `Intent · ${extractorName}`}</span>
+          <strong>{intentAblation
+            ? `${percent(rulesIntent?.exact_match)} · ${percent(llmIntent?.exact_match)}`
+            : percent(extractor?.exact_match)}</strong>
+          <p>{intentAblation
+            ? `exact-match on ${rulesIntent?.missions ?? 15} labelled missions — the rules backstop and sanitizer cover the 3B model's misses; the residual is the argued LoRA fine-tune target`
+            : `exact-match on ${extractor?.missions ?? 15} labelled missions · devices ${percent(extractor?.per_field?.devices)} · cap ${percent(extractor?.per_field?.max_load_kw)}`}</p>
         </article>
         <article>
           <span>LLM-only scheduling</span>
@@ -939,6 +946,28 @@ function EvaluationView() {
           </div>
           <div className="results-table-wrap">
             <table className="results-table">
+              <thead><tr><th>Intent extractor</th><th>exact</th><th>devices</th><th>deadline</th><th>objective</th><th>cap</th><th>avoid</th></tr></thead>
+              <tbody>
+                {(["rules", "llm"] as const).map((name) => {
+                  const row = data.intent[name];
+                  if (!row) return null;
+                  return (
+                    <tr key={name}>
+                      <td><span className="objective-pill">{name}</span></td>
+                      <td>{percent(row.exact_match)}</td>
+                      <td>{percent(row.per_field?.devices)}</td>
+                      <td>{percent(row.per_field?.deadline)}</td>
+                      <td>{percent(row.per_field?.objective)}</td>
+                      <td>{percent(row.per_field?.max_load_kw)}</td>
+                      <td>{percent(row.per_field?.avoid_hours)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="results-table-wrap">
+            <table className="results-table">
               <thead><tr><th>Ablation case</th><th>Joint search</th><th>Greedy placement</th></tr></thead>
               <tbody>
                 {ablation.cases.map((row) => (
@@ -956,7 +985,7 @@ function EvaluationView() {
           <div className="property-chips">
             <span className="property-chip"><Icon name="check" /> citation precision {percent(agentProps.citation_precision)}</span>
             <span className="property-chip"><Icon name="check" /> deterministic replay {agentProps.deterministic_plan_replay ? "yes" : "no"}</span>
-            <span className="property-chip"><Icon name="shield" /> {agentProps.explanations_rejected_by_guard} explanations rejected by the citation guard</span>
+            <span className="property-chip"><Icon name="shield" /> {agentProps.explanations_rejected_by_guard} explanation{agentProps.explanations_rejected_by_guard === 1 ? "" : "s"} rejected by the citation guard</span>
           </div>
           <p className="table-footnote">
             Generated {data.environment.generated_at.slice(0, 10)} · {modelLabel} ·{" "}
