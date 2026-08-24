@@ -2,7 +2,7 @@
 
 A local-LLM agent that plans household energy flexibility for Belgium: free-text missions become typed constraints, a genuine tool-using agent runs over MCP contracts (hybrid RAG, Elia Open Data, a deterministic optimizer), an independent critic gates every plan, and the model's explanation may cite only retrieved evidence. Fully offline — no cloud API key anywhere.
 
-[Technical report](deliverables/FlexiGrid_AI_Technical_Report.pdf) · [Defense deck](deliverables/FlexiGrid_AI_Defense_Deck.pptx) · [Demo guide](docs/DEMO_AND_DEFENSE.md) · [Measured results](backend/evaluation/RESULTS.md)
+[Demo guide](docs/DEMO_AND_DEFENSE.md) · [Measured results](backend/evaluation/RESULTS.md)
 
 ![FlexiGrid AI planning dashboard](docs/figures/flexigrid-dashboard.jpg)
 
@@ -125,8 +125,8 @@ Measured per subsystem: retrieval (40 labelled queries; hit@1 / recall@4 / MRR f
 
 ## Academic deliverables
 
-- [Technical report — PDF](deliverables/FlexiGrid_AI_Technical_Report.pdf) / [DOCX](deliverables/FlexiGrid_AI_Technical_Report.docx) (regenerate: `python docs/build_report.py`)
-- [Defense deck — PPTX](deliverables/FlexiGrid_AI_Defense_Deck.pptx) with speaker notes (regenerate: `python docs/build_deck.py`)
-- [Demo & examiner Q&A guide](docs/DEMO_AND_DEFENSE.md) · [Submission checklist](docs/SUBMISSION_CHECKLIST.md)
+The technical report and defense deck are generated locally and submitted separately — they are deliberately not stored in this repository:
 
-Before formal submission, complete the author line on the report cover and deck title slide; the full pre-submission procedure is in [docs/SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md).
+- Technical report: `python docs/build_report.py` → `deliverables/FlexiGrid_AI_Technical_Report.docx` (numbers are read from `backend/evaluation/results.json`)
+- Defense deck with speaker notes: `python docs/build_deck.py` → `deliverables/FlexiGrid_AI_Defense_Deck.pptx`
+- [Demo & examiner Q&A guide](docs/DEMO_AND_DEFENSE.md) · [Submission checklist](docs/SUBMISSION_CHECKLIST.md)

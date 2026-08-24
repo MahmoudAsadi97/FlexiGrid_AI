@@ -479,7 +479,7 @@ def add_cover(doc: Document) -> None:
     set_table_geometry(metrics, [3120, 3120, 3120])
     entries = [
         ("4 + 1", "advanced techniques", "local transformer, agent, hybrid RAG, MCP + deterministic critic"),
-        ("93", "automated tests", "85 backend + 8 interface, all passing"),
+        ("103", "automated tests", "95 backend + 8 interface, all passing"),
         (retrieval_recall, "retrieval recall@4", "hybrid BM25 + dense, 40 labelled queries"),
     ]
     for index, (value, label, detail) in enumerate(entries):
@@ -502,10 +502,10 @@ def add_cover(doc: Document) -> None:
     meta = doc.add_paragraph()
     meta.paragraph_format.space_before = Pt(32)
     meta.paragraph_format.space_after = Pt(3)
-    r = meta.add_run("AUTHORS")
+    r = meta.add_run("AUTHOR")
     set_run_font(r, size=8, color=MUTED, bold=True)
-    add_body(doc, "Nima Asadi and project partner", after=2)
-    add_body(doc, "Team of two  •  August 2026  •  Howest", after=0)
+    add_body(doc, "Mahmoud Asadi Heris", after=2)
+    add_body(doc, "CTAI — final year  •  Course: Generative AI  •  August 2026  •  Howest", after=0)
 
     doc.add_page_break()
 
@@ -522,8 +522,8 @@ def build_report() -> None:
     style_document(doc)
     props = doc.core_properties
     props.title = "FlexiGrid AI - Technical Report"
-    props.subject = "Generative AI assignment"
-    props.author = "Nima Asadi and project partner"
+    props.subject = "Generative AI — project report"
+    props.author = "Mahmoud Asadi Heris"
     props.keywords = "local LLM, Ollama, agents, MCP, hybrid RAG, Elia, energy flexibility, generative AI"
 
     add_cover(doc)
@@ -597,6 +597,7 @@ def build_report() -> None:
 
     doc.add_heading("Intent extraction: the model becomes load-bearing", level=2)
     add_body(doc, "The mission text is not decoration: the model converts it into a typed MissionSpec (tasks with power, duration and windows; objective; capacity cap; avoid-hours). A deterministic sanitizer then clamps every value against a device catalog — implausible powers are reset, impossible windows widened, duplicates dropped — and reports each adjustment in the trace. A rule-based parser provides the no-model fallback and doubles as the ablation baseline for the intent evaluation.")
+    add_body(doc, "Two of the sanitizer's guardrails came directly from field testing with free-typed missions. First, 12-hour clock times are normalized to 24-hour form before either extractor sees the text, because the 3B model reliably misread AM/PM phrasing ('before 07:00 AM' became evening windows in a live run). Second, a degenerate avoid-hours list — the model once emitted 18 avoided hours out of 24, leaving the optimizer almost no room — is dropped entirely and reported as an adjustment. When a feasible avoid-hours preference genuinely conflicts with the stated windows, the optimizer relaxes it and the system surfaces that as a flagged verdict with an explicit relaxation note; a conflict is reported, never hidden behind a fluent explanation.")
 
     doc.add_heading("Agent workflow", level=2)
     add_body(doc, "Planning runs as a genuine tool-using loop: at each step the model sees the mission, the tool catalog and a digest of gathered state, and returns a schema-validated decision naming the next tool. Guardrails keep the loop honest — repeated tools and premature finishes are overruled, a bounded step budget applies, and any stage the model skipped is completed deterministically. Every step is recorded with its arguments, duration, transport and who decided it (llm or guardrail), and the interface renders that trace verbatim.")
@@ -665,7 +666,7 @@ def build_report() -> None:
             ["MCP", "FastMCP server + stdio client host", "Same registry over the protocol and in-process"],
             ["Data", "Elia v2.1 API + derive.py + fixtures", "Live-derived or frozen stress signal with provenance"],
             ["API", "FastAPI + CORS", "/health, /api/agent/plan, /api/retrieve, /api/intent, snapshots"],
-            ["Tests", "unittest + node:test (93 tests)", "Optimizer, retrieval, intent, agent, API, MCP round-trip, UI render"],
+            ["Tests", "unittest + node:test (103 tests)", "Optimizer, retrieval, intent, agent, API, MCP round-trip, UI render"],
         ],
         [1600, 2900, 4860],
         small=True,
@@ -680,7 +681,7 @@ def build_report() -> None:
     add_number(doc, "Run `python -m flexigrid.mcp_host \"...\"` in a terminal to show the identical agent over a real MCP stdio session, then open Evaluation and Architecture.", num_id=demo_list_id)
 
     doc.add_heading("Reproducibility", level=2)
-    add_body(doc, "No cloud key exists anywhere in the system. `python -m flexigrid.doctor` verifies the environment (corpus, retrieval, adapter, LLM endpoint, structured output, agent, MCP round-trip) with actionable hints. A deterministic mock LLM server ships with the repository so the full agent code path is testable on machines without model weights, and the evaluation records the model and embedding backend behind every number. All 93 tests run without network access.")
+    add_body(doc, "No cloud key exists anywhere in the system. `python -m flexigrid.doctor` verifies the environment (corpus, retrieval, adapter, LLM endpoint, structured output, agent, MCP round-trip) with actionable hints. A deterministic mock LLM server ships with the repository so the full agent code path is testable on machines without model weights, and the evaluation records the model and embedding backend behind every number. All 103 tests run without network access.")
 
     doc.add_heading("5. Evaluation", level=1)
     environment_note = "Run `python -m flexigrid.evaluate` to generate results.json; tables below then populate automatically."
@@ -790,22 +791,22 @@ def build_report() -> None:
         small=True,
     )
 
-    doc.add_heading("Team collaboration", level=2)
-    add_body(doc, "The work should be divided without creating knowledge silos. Both students must review the complete code path and rehearse the same demo. A practical division is shown below; names can be assigned in the repository issue board while responsibilities remain shared.")
+    doc.add_heading("Work organization", level=2)
+    add_body(doc, "The project was designed, implemented, evaluated and documented end to end by the author, organized as three workstreams with explicit verification at each boundary. Because a single person carried every workstream, the assignment's requirement that the presenter can explain the entire project — data pipeline, model design, implementation and evaluation alike — is satisfied by construction; the defense preparation notes rehearse cross-cutting questions on every layer.")
     add_table(
         doc,
-        ["Workstream", "Team member A", "Team member B", "Shared verification"],
+        ["Workstream", "Scope", "Verification"],
         [
-            ["Data and backend", "Elia adapter, optimizer, MCP tools", "API integration and RAG corpus", "Pair review + backend test run"],
-            ["Interface and evaluation", "Dashboard and chart", "Fixture labels and evaluation harness", "UI walkthrough + benchmark review"],
-            ["Documentation and defense", "Methods and implementation", "Results, limitations and demo script", "Cross-question rehearsal"],
+            ["Data and backend", "Elia adapter and derivation, optimizer and critic, agent loop, MCP server and host, RAG corpus", "95 backend tests; python -m flexigrid.doctor end-to-end check"],
+            ["Interface and evaluation", "Live dashboard with verbatim trace, honest state design, split evaluation harness", "8 interface tests; measured results.json with provenance"],
+            ["Documentation and defense", "Technical report, defense deck, demo script and rehearsed Q&A", "Dry-run of the full 10-minute demo incl. failure modes"],
         ],
-        [2050, 2500, 2500, 2310],
+        [2300, 4260, 2800],
         small=True,
     )
 
     doc.add_heading("Conclusion", level=2)
-    add_body(doc, "FlexiGrid AI connects the course's advanced techniques into one measured workflow rather than a showcase of disconnected parts. A local transformer makes free text load-bearing through typed intent extraction; a genuine agent loop selects real MCP tools and is provably guarded; hybrid RAG grounds every claim in a corpus with stable citations; and the evaluation quantifies why the deterministic optimizer-critic must own feasibility — the model that explains the plan measurably cannot schedule it. Everything runs offline on one machine, every number carries its provenance, and every mode the system can degrade into is labelled in the interface. The Belgian Elia integration and capacity-tariff framing keep the project locally real; the 93-test suite and the mock-model harness keep it reproducible under exam conditions.")
+    add_body(doc, "FlexiGrid AI connects the course's advanced techniques into one measured workflow rather than a showcase of disconnected parts. A local transformer makes free text load-bearing through typed intent extraction; a genuine agent loop selects real MCP tools and is provably guarded; hybrid RAG grounds every claim in a corpus with stable citations; and the evaluation quantifies why the deterministic optimizer-critic must own feasibility — the model that explains the plan measurably cannot schedule it. Everything runs offline on one machine, every number carries its provenance, and every mode the system can degrade into is labelled in the interface. The Belgian Elia integration and capacity-tariff framing keep the project locally real; the 103-test suite and the mock-model harness keep it reproducible under exam conditions.")
 
     doc.add_heading("References", level=1)
     references = [

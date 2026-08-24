@@ -64,3 +64,7 @@ Desktop.ini
 # generated document renders
 /docs/rendered-report/
 /docs/rendered-deck/
+
+# generated report/deck outputs and transport bundles stay local — never on GitHub
+/deliverables/
+*.bundle

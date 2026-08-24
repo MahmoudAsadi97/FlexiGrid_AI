@@ -47,6 +47,15 @@ def rget(path: list[str], fallback: str = "—") -> str:
     return str(node)
 
 
+def rpct(path: list[str], fallback: str = "—") -> str:
+    """A results value rendered as a percentage ('0.333' → '33%')."""
+    raw = rget(path, "")
+    try:
+        return f"{float(raw) * 100:.0f}%"
+    except (TypeError, ValueError):
+        return fallback
+
+
 def _fill(shape, color: RGBColor) -> None:
     shape.fill.solid()
     shape.fill.fore_color.rgb = color
@@ -226,10 +235,10 @@ def build() -> None:
           "hybrid RAG, Elia Open Data, and a deterministic optimizer-critic.",
           size=19, color=RGBColor(0xC9, 0xD6, 0xD0))
     _chip_row(slide, ["100% local · no cloud key", "qwen2.5:3b via Ollama",
-                      "93 automated tests", "every number measured"],
+                      "103 automated tests", "every number measured"],
               Inches(4.35))
-    _text(slide, Inches(.65), Inches(6.55), Inches(11), Inches(.5),
-          "Nima Asadi and project partner  ·  Howest  ·  2026",
+    _text(slide, Inches(.65), Inches(6.55), Inches(11.8), Inches(.5),
+          "Mahmoud Asadi Heris  ·  CTAI, final year  ·  Generative AI  ·  Howest  ·  2026",
           size=13, color=RGBColor(0x8D, 0xA0, 0x99))
 
     # 2 ── Problem --------------------------------------------------------
@@ -250,7 +259,7 @@ def build() -> None:
     card = _card(slide, Inches(8.3), Inches(2.0), Inches(4.35), Inches(3.4), fill=INK)
     frame = card.text_frame; frame.margin_left = Inches(.3); frame.margin_top = Inches(.28)
     frame.word_wrap = True
-    baseline_rate = rget(["llm_only_baseline", "violation_or_failure_rate"], "")
+    baseline_rate = rpct(["llm_only_baseline", "violation_or_failure_rate"], "")
     p = frame.paragraphs[0]; run = p.add_run()
     run.text = baseline_rate if baseline_rate not in ("", "—") else "Baseline B"
     run.font.size = Pt(48 if baseline_rate not in ("", "—") else 30)
@@ -353,7 +362,7 @@ def build() -> None:
                ["MCP", "FastMCP server + stdio client host",
                 "same agent, same tools, real protocol session"],
                ["Deterministic critic", "joint search + independent validator",
-                (f"LLM-only baseline fails {rget(['llm_only_baseline', 'violation_or_failure_rate'])} of runs; critic: 0"
+                (f"LLM-only baseline fails {rpct(['llm_only_baseline', 'violation_or_failure_rate'])} of runs; critic: 0"
                  if rget(['llm_only_baseline', 'violation_or_failure_rate'], '') not in ('', '—')
                  else "LLM-only baseline measured on the demo machine; critic: 0 violations")],
            ],
@@ -427,6 +436,30 @@ def build() -> None:
         run.font.size = Pt(12.5); run.font.color.rgb = MUTED
         y = Emu(int(y) + int(Inches(.98)))
 
+    # 7b ── The product ---------------------------------------------------
+    slide = _slide(prs, "THE PRODUCT", "Honest states: verified, flagged, or infeasible — never silent", (
+        "30s, or skip if the live demo ran smoothly. Left: a verified live "
+        "run — trace with tool calls and the llm/guardrail column, cited "
+        "explanation, green critic verdict. Right: the strongest moment — a "
+        "mission whose naive earliest-start baseline is infeasible; the UI "
+        "says so with a tag and banner instead of hiding it, and only the "
+        "joint search finds a plan. If a validator check fails, the whole "
+        "interface turns amber and names the flag — the system never claims "
+        "a flagged plan is clean."))
+    figures = REPO_ROOT / "docs" / "figures"
+    live_shot = figures / "ui-live-run.png"
+    infeasible_shot = figures / "ui-baseline-infeasible.png"
+    if live_shot.exists():
+        slide.shapes.add_picture(str(live_shot), Inches(.65), Inches(2.05), width=Inches(5.95))
+        _text(slide, Inches(.65), Inches(5.85), Inches(5.95), Inches(.7),
+              "Verified · live — full agent trace, cited explanation, 4/4 checks",
+              size=11.5, color=MUTED)
+    if infeasible_shot.exists():
+        slide.shapes.add_picture(str(infeasible_shot), Inches(6.75), Inches(2.05), width=Inches(5.95))
+        _text(slide, Inches(6.75), Inches(5.85), Inches(5.95), Inches(.7),
+              "Baseline infeasible — the naive scheduler fails; joint search succeeds, and the UI says so",
+              size=11.5, color=MUTED)
+
     # 8 ── Evaluation -----------------------------------------------------
     environment_line = "run python -m flexigrid.evaluate to regenerate"
     if RESULTS:
@@ -449,11 +482,15 @@ def build() -> None:
              rget(["retrieval", mode, "recall_at_4"]),
              rget(["retrieval", mode, "mrr"])] for mode in ("bm25", "dense", "hybrid")],
            Inches(.65), Inches(2.0), Inches(5.9), [2.6, 1.1, 1.2, 1.1], size=12)
+    intent_cell = rget(["intent", "rules", "exact_match"])
+    if rget(["intent", "llm", "exact_match"], "") not in ("", "—"):
+        intent_cell = (f"rules {rpct(['intent', 'rules', 'exact_match'])} · "
+                       f"LLM {rpct(['intent', 'llm', 'exact_match'])}")
     _table(slide, ["Property", "Result"],
            [
-               ["Intent exact-match (rules ablation)", rget(["intent", "rules", "exact_match"])],
+               ["Intent exact-match (rules vs LLM ablation)", intent_cell],
                ["LLM-only scheduling violations (Baseline B)",
-                rget(["llm_only_baseline", "violation_or_failure_rate"], "pending demo-machine run")],
+                rpct(["llm_only_baseline", "violation_or_failure_rate"], "pending demo-machine run")],
                ["Citation precision (allow-list)", rget(["agent_properties", "citation_precision"])],
                ["Deterministic replay", "pass" if rget(["agent_properties", "deterministic_plan_replay"]) == "True" else rget(["agent_properties", "deterministic_plan_replay"])],
                ["Constraint validity, end-to-end", "all plans valid" if rget(["agent_properties", "all_plans_valid"]) == "True" else rget(["agent_properties", "all_plans_valid"])],
@@ -469,8 +506,8 @@ def build() -> None:
         "why the critic must exist. Next: LoRA for intent once it is the "
         "measured bottleneck, MILP at scale, a broader mission set with "
         "confidence intervals, carbon-aware objective from ods201. Close by "
-        "inviting questions on any layer — both team members can explain "
-        "every component."),
+        "inviting questions on any layer — every component was built by me "
+        "and I can explain all of it end to end."),
         dark=True)
     _text(slide, Inches(.65), Inches(2.1), Inches(5.6), Inches(.5),
           "PROVEN NOW", size=13, color=LIME, bold=True, font="Consolas")
@@ -479,7 +516,7 @@ def build() -> None:
         "A real agent over real MCP tools; guardrails verified by adversarial tests",
         "Hybrid RAG with stable citations and a 40-query labelled benchmark",
         "The critic's necessity quantified by the LLM-only baseline",
-        "93 tests, mock-model CI harness, every number with provenance",
+        "103 tests, mock-model CI harness, every number with provenance",
     ], Inches(.65), Inches(2.6), Inches(5.9), size=13, color=WHITE)
     _text(slide, Inches(6.95), Inches(2.1), Inches(5.6), Inches(.5),
           "NEXT", size=13, color=LIME, bold=True, font="Consolas")
@@ -493,6 +530,83 @@ def build() -> None:
     _text(slide, Inches(.65), Inches(6.6), Inches(12), Inches(.5),
           "github.com/MahmoudAsadi97/FlexiGrid_AI  ·  python -m flexigrid.doctor reproduces this talk",
           size=12, color=RGBColor(0x8D, 0xA0, 0x99), font="Consolas")
+
+    # B1 ── Backup: guardrail inventory -----------------------------------
+    slide = _slide(prs, "BACKUP · GUARDRAILS", "Every place the model is bounded", (
+        "Backup slide for the question round — do not present unless asked. "
+        "Walk any single row on demand; each one is implemented, tested, and "
+        "visible either in the trace or in the interface."))
+    _table(slide, ["Layer", "Guardrail", "What it prevents"],
+           [
+               ["Decoding", "schema-in-prompt + JSON extraction + one repair round-trip + fallback",
+                "malformed model output ever reaching the pipeline"],
+               ["Intent", "sanitizer clamps power/duration/windows against the device catalog",
+                "physically implausible tasks"],
+               ["Intent", "AM/PM normalized to 24h before extraction (field-tested fix)",
+                "'before 07:00 AM' being read as evening"],
+               ["Intent", "degenerate avoid-hours (≥12 of 24) dropped with a visible note",
+                "the model starving the optimizer of feasible hours"],
+               ["Agent loop", "bounded steps · repeats overruled · retrieval capped at 2 calls",
+                "looping and wasted tool calls"],
+               ["Agent loop", "premature finish overruled · skipped stages completed",
+                "an incomplete pipeline presented as done"],
+               ["Planning", "independent hour-by-hour critic gates every displayed plan",
+                "any invalid schedule reaching the screen"],
+               ["Planning", "impossible avoid-hours relaxed + surfaced as a flagged verdict",
+                "silent constraint dropping"],
+               ["Generation", "citations restricted to the retrieved allow-list, else rejected",
+                "hallucinated sources (1 rejection recorded in the harness)"],
+           ],
+           Inches(.65), Inches(1.95), Inches(12.05), [1.6, 5.2, 4.4], size=10.5)
+
+    # B2 ── Backup: intent ablation detail --------------------------------
+    slide = _slide(prs, "BACKUP · INTENT ABLATION", "Rules vs LLM, per field — and why the LLM stays", (
+        "Backup slide. The labelled set favours phrasings the rules handle "
+        "(one global deadline). The LLM generalizes to per-device deadlines "
+        "and free phrasing but misses fields — the sanitizer and rules "
+        "backstop absorb those misses at run time. This measured residual is "
+        "precisely the LoRA fine-tuning target named in the report; training "
+        "was deliberately deferred until prompting is the proven bottleneck."))
+    _table(slide, ["Extractor", "exact", "devices", "deadline", "objective", "cap", "avoid"],
+           [
+               ["rules", rpct(["intent", "rules", "exact_match"]), rpct(["intent", "rules", "per_field", "devices"]),
+                rpct(["intent", "rules", "per_field", "deadline"]), rpct(["intent", "rules", "per_field", "objective"]),
+                rpct(["intent", "rules", "per_field", "max_load_kw"]), rpct(["intent", "rules", "per_field", "avoid_hours"])],
+               ["llm", rpct(["intent", "llm", "exact_match"]), rpct(["intent", "llm", "per_field", "devices"]),
+                rpct(["intent", "llm", "per_field", "deadline"]), rpct(["intent", "llm", "per_field", "objective"]),
+                rpct(["intent", "llm", "per_field", "max_load_kw"]), rpct(["intent", "llm", "per_field", "avoid_hours"])],
+           ],
+           Inches(.65), Inches(2.0), Inches(12.05), [1.8, 1.2, 1.2, 1.3, 1.3, 1.0, 1.1], size=12)
+    _bullets(slide, [
+        ("Why keep the LLM", "rules parse one global deadline; only the model handles "
+         "per-device deadlines and arbitrary phrasing — the live demo depends on it"),
+        ("Why it is safe", "every extraction passes the sanitizer; degenerate output is "
+         "corrected or dropped with a visible adjustment note"),
+        ("What would fix it", "LoRA on synthetic mission→JSON pairs (8 GB GPU suffices for a "
+         "3B model); the harness re-measures the gain in one command"),
+    ], Inches(.65), Inches(4.05), Inches(12), size=13)
+
+    # B3 ── Backup: data derivation ---------------------------------------
+    slide = _slide(prs, "BACKUP · DATA DERIVATION", "From Elia records to a 0–100 stress signal", (
+        "Backup slide. Quarter-hour day-ahead records are bucketed to hourly "
+        "means; load and wind are min-max normalized over the day; stress is "
+        "normalized load minus half normalized wind, rescaled to 0-100. "
+        "Implemented and unit-tested in derive.py. Live mode carries a "
+        "retrieval timestamp; any failure falls back to the labelled frozen "
+        "fixture — the pipeline degrades, it never breaks, and no mode "
+        "pretends to be another."))
+    _bullets(slide, [
+        ("stress(h) = minmax(load)(h) − 0.5 · minmax(wind)(h) → 0–100",
+         "demand pressure minus renewable opportunity, per hour"),
+        ("Quarter-hour → hourly buckets", "day-ahead forecasts from ods002 (load) and "
+         "ods086 (wind) via Elia's v2.1 records API, up to 100 records per call"),
+        ("Fallback ladder", "live derivation → labelled frozen fixture; every snapshot "
+         "carries mode + source + timestamp provenance"),
+        ("Retail ≠ imbalance", "the household price is a separate labelled tariff input; "
+         "Elia market signals never set the bill"),
+        ("Future objective", "ods201 generation mix enables a carbon-aware score with the "
+         "same optimizer contract"),
+    ], Inches(.65), Inches(2.05), Inches(12), size=13.5)
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     prs.save(OUT_PATH)
