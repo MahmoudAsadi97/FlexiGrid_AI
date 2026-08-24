@@ -70,6 +70,13 @@ def optimize_schedule(spec: dict[str, Any] | None = None,
                              avoid_hours=avoid)
     plan = core.plan_to_dict(schedule, chosen_objective,  # type: ignore[arg-type]
                              max_load_kw=max_load, avoid_hours=avoid)
+    # optimize() relaxes an impossible avoid-hours preference instead of
+    # failing; surface that relaxation so no layer can present the plan as
+    # fully clean.
+    if avoid and not plan["validation"]["avoid_hours_respected"]:
+        plan["relaxation_note"] = (
+            "Honouring the avoid-hours preference left no feasible schedule, "
+            "so it was relaxed; the validator reports it as flagged.")
     # The earliest-start baseline is a comparison, never a gate: on tightly
     # pinned missions the naive baseline can be infeasible while the joint
     # search still finds a valid schedule — report that instead of failing.

@@ -8,7 +8,9 @@ exactly what ran — no simulated telemetry.
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -149,6 +151,22 @@ async def agent_plan(request: PlanRequest) -> dict:
 async def plan_legacy(request: PlanRequest) -> dict:
     """Backwards-compatible alias for /api/agent/plan."""
     return await agent_plan(request)
+
+
+@app.get("/api/evaluation")
+def evaluation_results() -> dict:
+    """The measured evaluation (results.json) for the dashboard's numbers.
+
+    Regenerate with ``python -m flexigrid.evaluate``; the file records which
+    model and embedding backend produced every figure.
+    """
+    path = Path(__file__).resolve().parent.parent / "evaluation" / "results.json"
+    if not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="results.json not generated yet — run "
+                   "python -m flexigrid.evaluate")
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 @app.get("/api/elia-snapshot")

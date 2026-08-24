@@ -47,6 +47,15 @@ class DeterministicAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(early_end, 5)
         self.assertGreaterEqual(late_start, 14)
 
+    async def test_relaxed_avoid_hours_are_flagged_not_hidden(self):
+        result = await run_agent(
+            "Charge the EV after 17:00 and before 20:00 but avoid 17:00 "
+            "to 20:00", use_llm=False)
+        self.assertFalse(
+            result["plan"]["validation"]["avoid_hours_respected"])
+        self.assertIn("flagged", result["explanation"]["summary"])
+        self.assertIn("relaxed", result["plan"]["relaxation_note"])
+
     async def test_infeasible_mission_raises(self):
         with self.assertRaises(InfeasibleMission):
             # 2h EV charge that must finish by 01:00 with 1 kW cap

@@ -31,6 +31,7 @@ _INTENT_SYSTEM = (
     "Never invent devices or deadlines that are not in the mission."
 )
 
+_AMPM_PATTERN = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?\b", re.IGNORECASE)
 _HOUR_PATTERN = re.compile(r"(?:by|before|until|till)\s+(\d{1,2})(?::(\d{2}))?", re.IGNORECASE)
 _AFTER_PATTERN = re.compile(r"(?:after|from|starting(?:\s+at)?)\s+(\d{1,2})(?::(\d{2}))?",
                             re.IGNORECASE)
@@ -62,6 +63,28 @@ class IntentResult:
 
 def _ceil_hour(hour: int, minutes: int | None) -> int:
     return min(hour + (1 if minutes else 0), 24)
+
+
+def normalize_mission_text(mission: str) -> tuple[str, bool]:
+    """Rewrite 12-hour clock times ("07:00 AM", "6 pm") into 24-hour form.
+
+    Small local models routinely misread AM/PM (a live demo turned
+    "before 07:00 AM" into evening windows), so the text is normalized
+    before either extractor sees it. Redundant markers like "18:30 PM"
+    collapse to the sane 24-hour reading.
+    """
+    def _convert(match: re.Match[str]) -> str:
+        hour = int(match.group(1))
+        minutes = match.group(2) or "00"
+        if hour > 12:          # "18:30 PM" — already 24h, marker is redundant
+            return f"{hour:02d}:{minutes}"
+        hour = hour % 12
+        if match.group(3).lower() == "p":
+            hour += 12
+        return f"{hour:02d}:{minutes}"
+
+    normalized = _AMPM_PATTERN.sub(_convert, mission)
+    return normalized, normalized != mission
 
 
 def rule_based_spec(mission: str) -> MissionSpec:
@@ -170,6 +193,11 @@ def sanitize(spec: MissionSpec) -> tuple[MissionSpec, list[str]]:
     avoid = sorted({hour % 24 for hour in spec.avoid_hours})
     if avoid != sorted(spec.avoid_hours):
         adjustments.append("avoid_hours normalized into 0-23")
+    if len(avoid) >= 12:
+        adjustments.append(
+            f"avoid_hours covered {len(avoid)} of 24 hours — treated as a "
+            f"degenerate extraction and ignored")
+        avoid = []
     return (MissionSpec(tasks=tasks, objective=spec.objective,
                         max_load_kw=spec.max_load_kw, avoid_hours=avoid,
                         notes=spec.notes),
@@ -179,6 +207,10 @@ def sanitize(spec: MissionSpec) -> tuple[MissionSpec, list[str]]:
 def extract_intent(mission: str, llm: LocalLLM | None = None,
                    use_llm: bool = True) -> IntentResult:
     notes: list[str] = []
+    pre_adjustments: list[str] = []
+    mission, ampm_changed = normalize_mission_text(mission)
+    if ampm_changed:
+        pre_adjustments.append("AM/PM times normalized to 24-hour form")
     if use_llm and llm is not None and llm.available():
         raw_spec, llm_notes = llm.structured(
             MissionSpec, _INTENT_SYSTEM, f"Mission: {mission}")
@@ -187,13 +219,13 @@ def extract_intent(mission: str, llm: LocalLLM | None = None,
             try:
                 spec, adjustments = sanitize(raw_spec)
                 return IntentResult(spec=spec, mode="llm", notes=notes,
-                                    adjustments=adjustments)
+                                    adjustments=pre_adjustments + adjustments)
             except ValueError as error:
                 notes.append(f"llm spec rejected: {error}")
         notes.append("falling back to rule-based extraction")
     spec, adjustments = sanitize(rule_based_spec(mission))
     return IntentResult(spec=spec, mode="rules", notes=notes,
-                        adjustments=adjustments)
+                        adjustments=pre_adjustments + adjustments)
 
 
 def spec_to_tasks(spec: MissionSpec) -> list[Task]:

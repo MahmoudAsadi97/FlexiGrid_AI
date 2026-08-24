@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  buildBenchmark,
   createPlan,
   formatHour,
   gridStress as fixtureStress,
@@ -11,11 +10,14 @@ import {
   type Objective,
 } from "@/lib/engine";
 import {
+  fetchEvaluation,
   fetchHealth,
   runAgentPlan,
   MissionRejectedError,
   type AgentRunResponse,
   type BackendHealth,
+  type EvaluationResults,
+  type TraceRecord,
 } from "@/lib/api";
 
 type View = "plan" | "evaluation" | "architecture";
@@ -27,6 +29,18 @@ const TASK_ICONS: Record<string, string> = {
   laundry: "WM",
   heat: "HP",
 };
+
+const RUN_STAGES: {
+  icon: "brain" | "database" | "tool" | "chart" | "shield";
+  label: string;
+  detail: string;
+}[] = [
+  { icon: "brain", label: "Extract constraints", detail: "mission text → typed, schema-validated spec" },
+  { icon: "database", label: "Grid snapshot", detail: "hourly tariff + Elia-derived stress" },
+  { icon: "tool", label: "Retrieve evidence", detail: "hybrid RAG over the device & policy corpus" },
+  { icon: "chart", label: "Optimize schedule", detail: "joint constrained search under the cap" },
+  { icon: "shield", label: "Validate", detail: "independent critic re-checks every hour" },
+];
 
 function Icon({ name }: { name: "bolt" | "play" | "check" | "database" | "brain" | "tool" | "chart" | "shield" | "arrow" | "cpu" | "warn" }) {
   const common = { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, "aria-hidden": true };
@@ -51,7 +65,12 @@ function formatEuro(value: number) {
 }
 
 function signedPercent(value: number) {
+  if (value === 0) return "±0%";
   return `${value >= 0 ? "−" : "+"}${Math.abs(value)}%`;
+}
+
+function percent(value: number | null | undefined, digits = 0) {
+  return value == null ? "—" : `${(value * 100).toFixed(digits)}%`;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +106,11 @@ type ViewPlan = {
   capKw: number;
   tariff: number[];
   stress: number[];
+  hasBaseline: boolean;
+  baselineGridScore: number | null;
+  baselinePeakKw: number | null;
   baselineNote?: string;
+  relaxationNote?: string;
 };
 
 function fromOffline(scenarioId: string, objective: Objective): ViewPlan {
@@ -117,6 +140,9 @@ function fromOffline(scenarioId: string, objective: Objective): ViewPlan {
     capKw: plan.scenario.maxGridLoadKw,
     tariff: fixtureTariff,
     stress: fixtureStress,
+    hasBaseline: true,
+    baselineGridScore: plan.baselineGridScore,
+    baselinePeakKw: Math.max(...plan.baselineLoad),
   };
 }
 
@@ -162,8 +188,35 @@ function fromLive(run: AgentRunResponse): ViewPlan {
     capKw: validation.max_load_kw,
     tariff: plan.tariff ?? fixtureTariff,
     stress: plan.stress ?? fixtureStress,
+    hasBaseline: Boolean(baseline),
+    baselineGridScore: baseline?.average_grid_stress ?? null,
+    baselinePeakKw: baseline?.validation.peak_load_kw ?? null,
     baselineNote: plan.baseline_note,
+    relaxationNote: plan.relaxation_note,
   };
+}
+
+// Consecutive identical tool calls (same tool, args, decider) collapse into
+// one row with a ×N chip, so a model that loops reads as one step, not noise.
+type CollapsedRecord = TraceRecord & { repeats: number };
+
+function collapseTrace(trace: TraceRecord[]): CollapsedRecord[] {
+  const collapsed: CollapsedRecord[] = [];
+  for (const record of trace) {
+    const previous = collapsed[collapsed.length - 1];
+    if (
+      previous &&
+      previous.tool === record.tool &&
+      previous.decided_by === record.decided_by &&
+      JSON.stringify(previous.args) === JSON.stringify(record.args)
+    ) {
+      previous.repeats += 1;
+      previous.duration_ms += record.duration_ms;
+    } else {
+      collapsed.push({ ...record, repeats: 1 });
+    }
+  }
+  return collapsed;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,13 +355,17 @@ function PlanView({ health }: { health: BackendHealth | null }) {
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [run, setRun] = useState<AgentRunResponse | null>(null);
-  const [offlinePlan, setOfflinePlan] = useState(() => fromOffline("morning", "balanced"));
+  // No plan is shown before a run: the agent (or the labelled offline
+  // simulation) has to build everything the page displays.
+  const [offlinePlan, setOfflinePlan] = useState<ViewPlan | null>(null);
   const [showBaseline, setShowBaseline] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const timerRef = useRef<number | null>(null);
 
   const live = Boolean(health);
-  const plan: ViewPlan = run ? fromLive(run) : offlinePlan;
+  const plan: ViewPlan | null = run ? fromLive(run) : offlinePlan;
+  const flagged = plan ? !plan.checks.every((check) => check.ok) : false;
+  const showingBaseline = Boolean(showBaseline && plan?.hasBaseline);
 
   const selectScenario = (nextId: string) => {
     const scenario = scenarios.find((item) => item.id === nextId) ?? scenarios[0];
@@ -319,7 +376,7 @@ function PlanView({ health }: { health: BackendHealth | null }) {
     setError(null);
     setPhase("idle");
     setShowBaseline(false);
-    setOfflinePlan(fromOffline(scenario.id, scenario.objective));
+    setOfflinePlan(null);
   };
 
   const startRun = useCallback(async () => {
@@ -405,7 +462,9 @@ function PlanView({ health }: { health: BackendHealth | null }) {
               {phase === "running" ? <span className="spinner" /> : phase === "complete" ? <Icon name="check" /> : <Icon name="play" />}
               {phase === "running"
                 ? `${live ? "Agent running" : "Simulating"}… ${(elapsedMs / 1000).toFixed(1)} s`
-                : phase === "complete" ? "Plan verified — run again" : live ? "Run agent plan" : "Run offline simulation"}
+                : phase === "complete"
+                  ? flagged ? "Plan flagged — run again" : "Plan verified — run again"
+                  : live ? "Run agent plan" : "Run offline simulation"}
             </button>
           </div>
         </div>
@@ -423,25 +482,47 @@ function PlanView({ health }: { health: BackendHealth | null }) {
         <div className="stats-grid" aria-label="Plan outcome metrics">
           <article className="metric-card primary-metric">
             <span>Estimated energy cost</span>
-            <strong>{formatEuro(showBaseline && plan.baseline.length ? plan.baselineCost : plan.totalCost)}</strong>
-            <em>{plan.baselineNote ? "naive baseline infeasible" : `${signedPercent(plan.savingsPercent)} vs earliest-start`}</em>
+            <strong>{plan ? formatEuro(showingBaseline ? plan.baselineCost : plan.totalCost) : "—"}</strong>
+            <em>{!plan
+              ? "run a mission to compute"
+              : showingBaseline
+                ? "naive earliest-start baseline"
+                : !plan.hasBaseline
+                  ? "naive baseline infeasible"
+                  : `${signedPercent(plan.savingsPercent)} vs earliest-start`}</em>
           </article>
           <article className="metric-card">
             <span>Grid-stress index</span>
-            <strong>{plan.averageGridScore}<small>/100</small></strong>
-            <em>{signedPercent(plan.gridImprovementPercent)} vs baseline</em>
+            <strong>{plan
+              ? <>{showingBaseline ? plan.baselineGridScore ?? plan.averageGridScore : plan.averageGridScore}<small>/100</small></>
+              : "—"}</strong>
+            <em>{!plan
+              ? "run a mission to compute"
+              : showingBaseline
+                ? "earliest-start baseline"
+                : !plan.hasBaseline
+                  ? "baseline infeasible"
+                  : `${signedPercent(plan.gridImprovementPercent)} vs baseline`}</em>
           </article>
           <article className="metric-card">
             <span>Hard constraints</span>
-            <strong>{plan.checks.filter((check) => check.ok).length}<small>/{plan.checks.length}</small></strong>
-            <em>{plan.checks.every((check) => check.ok)
-              ? <><i className="tiny-check">✓</i> validator passed</>
-              : <>validator flagged {plan.checks.filter((check) => !check.ok).length}</>}</em>
+            <strong>{plan
+              ? <>{plan.checks.filter((check) => check.ok).length}<small>/{plan.checks.length}</small></>
+              : "—"}</strong>
+            <em>{!plan
+              ? "validated after every run"
+              : showingBaseline
+                ? "checks refer to the optimized plan"
+                : plan.checks.every((check) => check.ok)
+                  ? <><i className="tiny-check">✓</i> validator passed</>
+                  : <>validator flagged {plan.checks.filter((check) => !check.ok).length}</>}</em>
           </article>
           <article className="metric-card">
             <span>Peak controllable load</span>
-            <strong>{plan.peakLoadKw.toFixed(1)}<small> kW</small></strong>
-            <em>cap {plan.capKw.toFixed(1)} kW</em>
+            <strong>{plan
+              ? <>{(showingBaseline && plan.baselinePeakKw != null ? plan.baselinePeakKw : plan.peakLoadKw).toFixed(1)}<small> kW</small></>
+              : "—"}</strong>
+            <em>{plan ? `cap ${plan.capKw.toFixed(1)} kW` : "run a mission to compute"}</em>
           </article>
         </div>
 
@@ -449,34 +530,61 @@ function PlanView({ health }: { health: BackendHealth | null }) {
           <div className="schedule-head">
             <div>
               <span className="eyebrow">24-HOUR PLAN</span>
-              <h2>Loads shifted away from grid pressure</h2>
+              <h2>{plan ? "Loads shifted away from grid pressure" : "Your 24-hour schedule appears here"}</h2>
             </div>
-            <div className="compare-toggle" role="group" aria-label="Compare schedules">
-              <button className={!showBaseline ? "active" : ""} onClick={() => setShowBaseline(false)}>Optimized</button>
-              <button className={showBaseline ? "active" : ""} onClick={() => setShowBaseline(true)}>Baseline</button>
-            </div>
+            {plan && (
+              <div className="compare-toggle" role="group" aria-label="Compare schedules">
+                <button className={!showingBaseline ? "active" : ""} onClick={() => setShowBaseline(false)}>Optimized</button>
+                {plan.hasBaseline ? (
+                  <button className={showingBaseline ? "active" : ""} onClick={() => setShowBaseline(true)}>Baseline</button>
+                ) : (
+                  <span className="infeasible-tag" title={plan.baselineNote}>baseline infeasible ✕</span>
+                )}
+              </div>
+            )}
           </div>
-          <TimelineChart plan={plan} showBaseline={showBaseline} />
 
-          <div className="task-list">
-            {(showBaseline && plan.baseline.length ? plan.baseline : plan.schedule).map((task) => (
-              <article className="task-row" key={task.id}>
-                <div className="task-icon">{task.icon}</div>
-                <div className="task-name">
-                  <strong>{task.name}</strong>
-                  <span>{task.powerKw.toFixed(1)} kW · {task.end - task.start}h</span>
-                </div>
-                <div className="task-window">
-                  <span>Scheduled</span>
-                  <strong>{formatHour(task.start)}–{formatHour(task.end)}</strong>
-                </div>
-                <div className="task-result">
-                  <strong>{formatEuro(task.cost)}</strong>
-                  <span>grid {task.gridScore}/100</span>
-                </div>
-              </article>
-            ))}
-          </div>
+          {plan && !plan.hasBaseline && plan.baselineNote && (
+            <div className="baseline-banner" role="note">
+              <Icon name="warn" />
+              <p>{plan.baselineNote}</p>
+            </div>
+          )}
+
+          {plan ? (
+            <>
+              <TimelineChart plan={plan} showBaseline={showingBaseline} />
+
+              <div className="task-list">
+                {(showingBaseline && plan.baseline.length ? plan.baseline : plan.schedule).map((task) => (
+                  <article className="task-row" key={task.id}>
+                    <div className="task-icon">{task.icon}</div>
+                    <div className="task-name">
+                      <strong>{task.name}</strong>
+                      <span>{task.powerKw.toFixed(1)} kW · {task.end - task.start}h</span>
+                    </div>
+                    <div className="task-window">
+                      <span>Scheduled</span>
+                      <strong>{formatHour(task.start)}–{formatHour(task.end)}</strong>
+                    </div>
+                    <div className="task-result">
+                      <strong>{formatEuro(task.cost)}</strong>
+                      <span>grid {task.gridScore}/100</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="chart-empty">
+              <Icon name="chart" />
+              <p>
+                {live
+                  ? "Press Run agent plan — the local model extracts your constraints, calls the MCP tools, and the verified schedule lands here."
+                  : "Press Run offline simulation to replay the deterministic browser engine on the frozen fixture. Start the backend for the real pipeline."}
+              </p>
+            </div>
+          )}
         </div>
       </section>
 
@@ -487,8 +595,16 @@ function PlanView({ health }: { health: BackendHealth | null }) {
               <span className="eyebrow">TRANSPARENT TRACE</span>
               <h2>How the plan was built</h2>
             </div>
-            <span className={`trace-status ${phase}`}>
-              {phase === "running" ? "Running" : phase === "error" ? "Rejected" : run ? "Verified · live" : "Offline sim"}
+            <span className={`trace-status ${phase}${flagged ? " flagged" : ""}`}>
+              {phase === "running"
+                ? "Running"
+                : phase === "error"
+                  ? "Rejected"
+                  : run
+                    ? flagged ? "Flagged · live" : "Verified · live"
+                    : plan
+                      ? flagged ? "Flagged · sim" : "Offline sim"
+                      : live ? "Ready · live" : "Offline sim"}
             </span>
           </div>
 
@@ -500,7 +616,9 @@ function PlanView({ health }: { health: BackendHealth | null }) {
                 </span>
                 <span className="mode-badge sub">intent: {run.modes.intent}</span>
                 <span className="mode-badge sub">retrieval: {run.modes.retrieval} / {run.modes.retrieval_backend}</span>
-                <span className="mode-badge sub">transport: {run.modes.transport}</span>
+                {run.modes.transport !== "direct" && (
+                  <span className="mode-badge sub">transport: MCP stdio</span>
+                )}
               </div>
 
               <div className="intent-panel">
@@ -517,17 +635,18 @@ function PlanView({ health }: { health: BackendHealth | null }) {
                   )}
                 </div>
                 {run.modes.intent_adjustments.length > 0 && (
-                  <p className="adjustment-note">
-                    Sanitizer adjustments: {run.modes.intent_adjustments.join("; ")}
-                  </p>
+                  <div className="adjustment-note" role="note">
+                    <strong>Sanitizer stepped in</strong>
+                    <p>{run.modes.intent_adjustments.join("; ")}</p>
+                  </div>
                 )}
               </div>
 
               <div className="tool-log">
-                <div className="tool-log-head"><span>Agent tool calls</span><em>{run.modes.transport}</em></div>
-                {run.trace.map((record) => (
+                <div className="tool-log-head"><span>Agent tool calls</span><em>{run.trace.length} steps</em></div>
+                {collapseTrace(run.trace).map((record) => (
                   <div className={`tool-row ${record.ok ? "" : "failed"}`} key={record.step}>
-                    <code><b>{record.tool}</b></code>
+                    <code><b>{record.tool}</b>{record.repeats > 1 ? <i className="repeat-chip">×{record.repeats}</i> : null}</code>
                     <span className="tool-meta">
                       <em className={`decided ${record.decided_by}`}>{record.decided_by}</em>
                       <em>{record.duration_ms} ms</em>
@@ -548,7 +667,7 @@ function PlanView({ health }: { health: BackendHealth | null }) {
                     <div>
                       <div className="evidence-title">
                         <strong>{chunk.title} — {chunk.section}</strong>
-                        <span>{chunk.chunk_id} · score {chunk.score}</span>
+                        <span>{chunk.chunk_id}</span>
                       </div>
                       <p>{chunk.text.length > 180 ? `${chunk.text.slice(0, 177)}…` : chunk.text}</p>
                     </div>
@@ -569,26 +688,40 @@ function PlanView({ health }: { health: BackendHealth | null }) {
                 <p className="explanation-limitation">{run.explanation.limitation}</p>
               </div>
 
-              <div className="critic-note">
-                <Icon name="shield" />
+              <div className={`critic-note${flagged ? " flagged" : ""}`}>
+                <Icon name={flagged ? "warn" : "shield"} />
                 <div>
                   <strong>Critic verdict</strong>
-                  <p>{plan.checks.every((check) => check.ok)
+                  <p>{plan && plan.checks.every((check) => check.ok)
                     ? `All ${plan.checks.length} checks passed: ${plan.checks.map((check) => check.label).join(", ")}.`
-                    : `Flagged: ${plan.checks.filter((check) => !check.ok).map((check) => check.label).join(", ")}.`}
-                    {plan.baselineNote ? ` ${plan.baselineNote}` : ""}</p>
+                    : plan
+                      ? `Flagged: ${plan.checks.filter((check) => !check.ok).map((check) => check.label).join(", ")} — ${plan.checks.filter((check) => check.ok).length}/${plan.checks.length} other checks passed.`
+                      : ""}
+                    {plan?.relaxationNote ? ` ${plan.relaxationNote}` : ""}
+                    {plan?.baselineNote ? ` ${plan.baselineNote}` : ""}</p>
                 </div>
               </div>
             </>
           ) : phase === "running" && live ? (
             <>
               <div className="mode-strip">
-                <span className="mode-badge llm"><Icon name="cpu" /> live backend — agent running</span>
+                <span className="mode-badge llm"><Icon name="cpu" /> agent running · {(elapsedMs / 1000).toFixed(1)} s</span>
               </div>
-              <p className="offline-note">
-                The local model is extracting constraints, calling tools, and
-                validating the schedule. The full trace appears here when the
-                run completes.
+              <ol className="pipeline-list running" aria-label="Pipeline stages in progress">
+                {RUN_STAGES.map((stage, index) => (
+                  <li className="pipeline-step reached" style={{ animationDelay: `${index * 0.45}s` }} key={stage.label}>
+                    <span className="stage-icon"><Icon name={stage.icon} /></span>
+                    <div>
+                      <strong>{stage.label}</strong>
+                      <span>{stage.detail}</span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <p className="offline-note ready-note">
+                The local model is choosing tools step by step. The real trace —
+                every call, thought, and timing — replaces this list the moment
+                the run completes.
               </p>
             </>
           ) : phase === "error" && live ? (
@@ -602,17 +735,17 @@ function PlanView({ health }: { health: BackendHealth | null }) {
                 cap, or remove a device, then run again.
               </p>
             </>
-          ) : (
+          ) : plan ? (
             <>
               <div className="mode-strip">
                 <span className="mode-badge det"><Icon name="cpu" /> offline simulation — browser engine</span>
               </div>
               <p className="offline-note">
-                The backend is not connected, so this view replays the deterministic
-                browser-side engine on the frozen fixture. Start the API and the
-                local model (<code>uvicorn flexigrid.api:app</code> + Ollama) and
-                reload to see the real agent trace, retrieval scores, and the
-                model-generated explanation here.
+                The backend is not connected, so this run replayed the
+                deterministic browser-side engine on the frozen fixture. Start
+                the API and the local model (<code>uvicorn flexigrid.api:app</code> +
+                Ollama) and reload to see the real agent trace, retrieval, and
+                the model-generated explanation here.
               </p>
               <div className="evidence-head"><span>Fixture evidence (simulated retrieval)</span><em>top-4</em></div>
               <div className="evidence-list">
@@ -636,6 +769,40 @@ function PlanView({ health }: { health: BackendHealth | null }) {
                 </div>
               </div>
             </>
+          ) : (
+            <>
+              <div className="mode-strip">
+                <span className={`mode-badge ${live ? "llm" : "det"}`}>
+                  <Icon name="cpu" /> {live ? "backend connected — ready" : "backend offline — browser engine on standby"}
+                </span>
+              </div>
+              {live ? (
+                <p className="offline-note ready-note">
+                  The live pipeline is up. Run a mission and this panel fills
+                  with the real thing: the constraints the model extracted,
+                  every tool call with its thought and timing, the retrieved
+                  evidence, the cited explanation, and the critic&apos;s verdict.
+                </p>
+              ) : (
+                <p className="offline-note">
+                  The backend is not connected. Run offline simulation replays a
+                  clearly-labelled deterministic browser engine; start the API
+                  and the local model (<code>uvicorn flexigrid.api:app</code> +
+                  Ollama) and reload for the real agent trace.
+                </p>
+              )}
+              <ol className="pipeline-list" aria-label="Pipeline stages">
+                {RUN_STAGES.map((stage) => (
+                  <li className="pipeline-step" key={stage.label}>
+                    <span className="stage-icon"><Icon name={stage.icon} /></span>
+                    <div>
+                      <strong>{stage.label}</strong>
+                      <span>{stage.detail}</span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </>
           )}
         </div>
       </aside>
@@ -647,18 +814,63 @@ function PlanView({ health }: { health: BackendHealth | null }) {
 // Evaluation view
 // ---------------------------------------------------------------------------
 
+const FALLBACK_EVAL: EvaluationResults = {
+  environment: {
+    generated_at: "2026-08-24T12:18:23+00:00",
+    llm_model: null,
+    embeddings_backend: "tfidf",
+    embeddings_model: "tfidf-svd-128",
+    corpus_chunks: 51,
+  },
+  retrieval: {
+    bm25: { queries: 40, hit_at_1: 0.95, recall_at_4: 0.988, mrr: 0.969 },
+    dense: { queries: 40, hit_at_1: 0.95, recall_at_4: 0.988, mrr: 0.967 },
+    hybrid: { queries: 40, hit_at_1: 0.95, recall_at_4: 0.988, mrr: 0.971 },
+  },
+  intent: {
+    rules: {
+      missions: 15,
+      exact_match: 0.733,
+      per_field: { devices: 0.933, deadline: 0.933, objective: 0.867, max_load_kw: 1, avoid_hours: 1 },
+    },
+  },
+  llm_only_baseline: { skipped: "requires the local model" },
+  greedy_ablation: {
+    cases: [
+      { case: "morning", joint_cost_eur: 1.79, greedy_cost_eur: null, greedy_valid: false },
+      { case: "grid-friendly", joint_cost_eur: 1.37, greedy_cost_eur: 1.37, greedy_valid: true },
+      { case: "peak-avoidance", joint_cost_eur: 1.84, greedy_cost_eur: 1.84, greedy_valid: true },
+      { case: "tight-window (cost)", joint_cost_eur: 1.87, greedy_cost_eur: null, greedy_valid: false },
+      { case: "tight-window (balanced)", joint_cost_eur: 1.87, greedy_cost_eur: null, greedy_valid: false },
+    ],
+    greedy_failures: 3,
+    joint_failures: 0,
+  },
+  agent_properties: {
+    citation_precision: 1,
+    explanations_rejected_by_guard: 0,
+    deterministic_plan_replay: true,
+  },
+};
+
 function EvaluationView() {
-  const benchmark = useMemo(() => buildBenchmark(), []);
-  const testRows = scenarios.map((scenario) => {
-    const plan = createPlan(scenario.id, scenario.objective);
-    return {
-      scenario: scenario.label,
-      objective: scenario.objective,
-      cost: plan.totalCost,
-      savings: plan.savingsPercent,
-      valid: plan.constraintsSatisfied === plan.constraintsTotal,
-    };
-  });
+  const [measured, setMeasured] = useState<EvaluationResults | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchEvaluation().then((result) => {
+      if (!cancelled && result) setMeasured(result);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const data = measured ?? FALLBACK_EVAL;
+  const hybrid = data.retrieval.hybrid;
+  const extractorName = data.intent["llm"] ? "llm" : "rules";
+  const extractor = data.intent[extractorName];
+  const baseline = data.llm_only_baseline;
+  const ablation = data.greedy_ablation;
+  const agentProps = data.agent_properties;
+  const modelLabel = data.environment.llm_model ?? "no-LLM fallback";
 
   return (
     <div className="evaluation-page">
@@ -676,26 +888,82 @@ function EvaluationView() {
       </section>
 
       <section className="benchmark-grid">
-        <article><span>Retrieval set</span><strong>40</strong><p>labelled queries · recall@4, MRR, hit@1 for BM25 / dense / hybrid</p></article>
-        <article><span>Intent set</span><strong>15</strong><p>labelled missions · field-level accuracy, LLM vs rule ablation</p></article>
-        <article><span>LLM-only baseline</span><strong>B</strong><p>direct model scheduling — measures the violation rate the critic prevents</p></article>
-        <article><span>Search ablation</span><strong>greedy</strong><p>greedy placement fails on tight windows; joint search never does</p></article>
+        <article>
+          <span>Retrieval · hybrid</span>
+          <strong>{percent(hybrid?.hit_at_1)}</strong>
+          <p>hit@1 on {hybrid?.queries ?? 40} labelled queries · recall@4 {percent(hybrid?.recall_at_4, 1)} · MRR {hybrid?.mrr ?? "—"}</p>
+        </article>
+        <article>
+          <span>Intent · {extractorName}</span>
+          <strong>{percent(extractor?.exact_match)}</strong>
+          <p>exact-match on {extractor?.missions ?? 15} labelled missions · devices {percent(extractor?.per_field?.devices)} · cap {percent(extractor?.per_field?.max_load_kw)}</p>
+        </article>
+        <article>
+          <span>LLM-only scheduling</span>
+          <strong>{baseline.skipped ? "—" : percent(baseline.violation_or_failure_rate)}</strong>
+          <p>{baseline.skipped
+            ? "violation rate of direct-model scheduling — measure it on the demo machine with Ollama live; the critic holds displayed violations at zero"
+            : `of ${baseline.attempts} direct-model schedules violate constraints (${baseline.model}) — the critic blocks every one from display`}</p>
+        </article>
+        <article>
+          <span>Greedy vs joint search</span>
+          <strong>{ablation.greedy_failures}/{ablation.cases.length}</strong>
+          <p>cases where greedy placement fails outright · joint constrained search: {ablation.joint_failures} failures</p>
+        </article>
       </section>
 
       <div className="evaluation-columns">
         <section className="results-panel">
-          <div className="section-heading"><div><span className="eyebrow">DETERMINISTIC FIXTURE RUNS</span><h2>Browser-engine acceptance suite</h2></div><span className="suite-status"><i /> {benchmark.constraintPassRate}% constraint pass ({benchmark.runs} runs)</span></div>
+          <div className="section-heading">
+            <div><span className="eyebrow">MEASURED RESULTS</span><h2>results.json, rendered live</h2></div>
+            <span className="suite-status"><i /> {measured ? "read from the running backend" : "packaged snapshot"} · {modelLabel}</span>
+          </div>
           <div className="results-table-wrap">
             <table className="results-table">
-              <thead><tr><th>Scenario</th><th>Objective</th><th>Cost</th><th>vs earliest-start</th><th>Validator</th></tr></thead>
-              <tbody>{testRows.map((row) => <tr key={row.scenario}><td>{row.scenario}</td><td><span className="objective-pill">{row.objective}</span></td><td>{formatEuro(row.cost)}</td><td>{signedPercent(row.savings)}</td><td><span className={row.valid ? "pass-pill" : "fail-pill"}>{row.valid ? "✓ Pass" : "✗ Fail"}</span></td></tr>)}</tbody>
+              <thead><tr><th>Retrieval mode</th><th>hit@1</th><th>recall@4</th><th>MRR</th></tr></thead>
+              <tbody>
+                {(["bm25", "dense", "hybrid"] as const).map((mode) => {
+                  const row = data.retrieval[mode];
+                  if (!row) return null;
+                  return (
+                    <tr key={mode}>
+                      <td><span className="objective-pill">{mode}</span></td>
+                      <td>{percent(row.hit_at_1, 1)}</td>
+                      <td>{percent(row.recall_at_4, 1)}</td>
+                      <td>{row.mrr}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
             </table>
           </div>
+          <div className="results-table-wrap">
+            <table className="results-table">
+              <thead><tr><th>Ablation case</th><th>Joint search</th><th>Greedy placement</th></tr></thead>
+              <tbody>
+                {ablation.cases.map((row) => (
+                  <tr key={row.case}>
+                    <td>{row.case}</td>
+                    <td>{row.joint_cost_eur != null ? formatEuro(row.joint_cost_eur) : "—"}</td>
+                    <td>{row.greedy_valid && row.greedy_cost_eur != null
+                      ? formatEuro(row.greedy_cost_eur)
+                      : <span className="fail-pill">✗ infeasible</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="property-chips">
+            <span className="property-chip"><Icon name="check" /> citation precision {percent(agentProps.citation_precision)}</span>
+            <span className="property-chip"><Icon name="check" /> deterministic replay {agentProps.deterministic_plan_replay ? "yes" : "no"}</span>
+            <span className="property-chip"><Icon name="shield" /> {agentProps.explanations_rejected_by_guard} explanations rejected by the citation guard</span>
+          </div>
           <p className="table-footnote">
-            These three rows are the browser fallback engine on the frozen
-            fixture — 2 computed checks per run (task windows, capacity cap).
-            The full measured evaluation, including the local-model results,
-            lives in <code>backend/evaluation/RESULTS.md</code>.
+            Generated {data.environment.generated_at.slice(0, 10)} · {modelLabel} ·{" "}
+            {data.environment.embeddings_backend} embeddings · corpus{" "}
+            {data.environment.corpus_chunks} chunks. Re-run{" "}
+            <code>python -m flexigrid.evaluate</code> after switching models —
+            this page reads the refreshed numbers straight from the backend.
           </p>
         </section>
 
@@ -796,10 +1064,12 @@ export default function FlexiGridDashboard() {
         </nav>
         <div className="topbar-meta"><BackendChip health={health} checking={checking} /></div>
       </header>
+      {/* All views stay mounted so a live run survives tab switches — during
+          the Q&A round, Plan → Architecture → Plan must not wipe the trace. */}
       <div className="content-shell">
-        {view === "plan" && <PlanView health={health} />}
-        {view === "evaluation" && <EvaluationView />}
-        {view === "architecture" && <ArchitectureView />}
+        <div hidden={view !== "plan"}><PlanView health={health} /></div>
+        <div hidden={view !== "evaluation"}><EvaluationView /></div>
+        <div hidden={view !== "architecture"}><ArchitectureView /></div>
       </div>
       <footer className="app-footer">
         <span>FlexiGrid AI · Generative AI assignment prototype</span>

@@ -4,8 +4,8 @@ import unittest
 
 from tests import helpers
 
-from flexigrid.intent import (extract_intent, rule_based_spec, sanitize,
-                              spec_to_tasks)
+from flexigrid.intent import (extract_intent, normalize_mission_text,
+                              rule_based_spec, sanitize, spec_to_tasks)
 from flexigrid.llm import get_llm
 from flexigrid.models import MissionSpec, TaskSpec
 
@@ -89,6 +89,46 @@ class SanitizerTests(unittest.TestCase):
         tasks = spec_to_tasks(spec)
         self.assertEqual(tasks[0].source_id, "manual-ev#1")
         self.assertIn("EV", tasks[0].name)
+
+
+class NormalizationTests(unittest.TestCase):
+    """AM/PM handling — a live demo turned 'before 07:00 AM' into evening."""
+
+    def test_ampm_times_rewritten_to_24_hour(self):
+        text, changed = normalize_mission_text(
+            "Charge the EV before 07:00 AM and preheat by 6:30 pm")
+        self.assertTrue(changed)
+        self.assertIn("before 07:00", text)
+        self.assertIn("by 18:30", text)
+
+    def test_redundant_pm_marker_on_24h_time_is_dropped(self):
+        text, _ = normalize_mission_text("Preheat the home by 18:30 PM")
+        self.assertIn("by 18:30", text)
+        self.assertNotIn("pm", text.lower())
+
+    def test_extract_intent_applies_normalization(self):
+        helpers.use_no_llm()
+        result = extract_intent("Charge the EV before 07:00 AM",
+                                llm=get_llm())
+        self.assertEqual(result.spec.tasks[0].latest_end, 7)
+        self.assertTrue(any("24-hour" in item for item in result.adjustments))
+
+    def test_degenerate_avoid_hours_are_dropped(self):
+        raw = MissionSpec(tasks=[TaskSpec(task_id="ev", power_kw=3.6,
+                                          duration_hours=2, earliest_start=0,
+                                          latest_end=24)],
+                          avoid_hours=list(range(22)))
+        spec, adjustments = sanitize(raw)
+        self.assertEqual(spec.avoid_hours, [])
+        self.assertTrue(any("degenerate" in item for item in adjustments))
+
+    def test_small_avoid_lists_survive_sanitizing(self):
+        raw = MissionSpec(tasks=[TaskSpec(task_id="ev", power_kw=3.6,
+                                          duration_hours=2, earliest_start=0,
+                                          latest_end=24)],
+                          avoid_hours=[17, 18, 19])
+        spec, _ = sanitize(raw)
+        self.assertEqual(spec.avoid_hours, [17, 18, 19])
 
 
 class LlmIntentTests(unittest.TestCase):

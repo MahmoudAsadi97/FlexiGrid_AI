@@ -52,7 +52,9 @@ _EXPLAIN_SYSTEM = (
     "task times and never invent numbers. Every factual claim must be "
     "supported by one of the allowed citation ids. Mention that the grid "
     "signal derives from Elia forecasts and that the retail tariff is a "
-    "separate input. Write for a non-expert resident."
+    "separate input. If 'validator_flags' is non-empty, state those flags "
+    "plainly in the summary — never describe a flagged plan as fully clean. "
+    "Write for a non-expert resident."
 )
 
 
@@ -85,6 +87,7 @@ class AgentState:
     plan: dict[str, Any] | None = None
     validation: dict[str, Any] | None = None
     done: set[str] = field(default_factory=set)
+    retrieve_calls: int = 0
 
     def digest(self) -> str:
         """Compact state summary shown to the model each step."""
@@ -156,6 +159,7 @@ def _apply_result(tool: str, result: Any, state: AgentState) -> None:
         state.snapshot_mode = result.get("mode", "unknown")
     elif tool == "retrieve_evidence":
         state.evidence = list(result)
+        state.retrieve_calls += 1
     elif tool == "optimize_schedule":
         state.plan = result
         state.validation = result.get("validation")
@@ -189,30 +193,56 @@ async def _decide(llm: LocalLLM | None, state: AgentState,
         decision, notes = llm.structured(AgentDecision, _AGENT_SYSTEM, user,
                                          max_tokens=300)
         if decision is not None:
+            # retrieve_evidence may legitimately run twice (different queries);
+            # beyond that the model is looping and the pipeline moves on.
             repeated = (decision.tool != "finish" and decision.tool in state.done
-                        and decision.tool != "retrieve_evidence")
+                        and (decision.tool != "retrieve_evidence"
+                             or state.retrieve_calls >= 2))
             premature = decision.tool == "finish" and not (
                 state.plan and state.validation and state.validation.get("valid"))
             if not repeated and not premature:
                 return decision, "llm", notes
-            reason = "repeated a completed tool" if repeated else "finished before a valid plan"
+            reason = ("retrieval already ran twice"
+                      if decision.tool == "retrieve_evidence"
+                      else "repeated a completed tool") if repeated \
+                else "finished before a valid plan"
             notes.append(f"decision overruled: {reason}")
         fallback = _next_canonical(state)
-        return (AgentDecision(thought=f"guardrail: continuing pipeline at {fallback}",
+        return (AgentDecision(thought=f"guardrail queued the next stage: {fallback}",
                               tool=fallback), "guardrail", notes)
     fallback = _next_canonical(state)
     return (AgentDecision(thought="deterministic pipeline (no LLM reachable)",
                           tool=fallback), "guardrail", [])
 
 
+def _validator_flags(state: AgentState) -> list[str]:
+    """Human-readable names of the checks the validator did not pass."""
+    validation = state.validation or {}
+    flags = []
+    if validation.get("within_windows") is False:
+        flags.append("task windows")
+    if validation.get("below_capacity") is False:
+        flags.append("capacity cap")
+    if validation.get("avoid_hours_respected") is False:
+        flags.append("avoid-hours preference")
+    return flags
+
+
 def _fallback_explanation(state: AgentState) -> Explanation:
     citations = [item["chunk_id"] for item in state.evidence][:4] or ["pipeline-stress#0"]
     plan = state.plan or {}
+    flags = _validator_flags(state)
+    summary = (f"The schedule finishes every task inside its window for "
+               f"€{plan.get('total_cost_eur', '?')} with a peak of "
+               f"{plan.get('peak_load_kw', '?')} kW, below the "
+               f"{(state.spec or {}).get('max_load_kw', 4.6)} kW connection cap.")
+    if flags:
+        summary += (f" The independent validator flagged: {', '.join(flags)} — "
+                    f"honouring every stated constraint left no feasible "
+                    f"schedule, so the conflict is reported here instead of "
+                    f"being hidden.")
     return Explanation(
-        summary=(f"The schedule finishes every task inside its window for "
-                 f"€{plan.get('total_cost_eur', '?')} with a peak of "
-                 f"{plan.get('peak_load_kw', '?')} kW, below the "
-                 f"{(state.spec or {}).get('max_load_kw', 4.6)} kW connection cap."),
+        summary=summary,
         rationale=[
             "A deterministic validator re-checked every task window and each "
             "hour's combined load before this explanation was produced.",
@@ -244,6 +274,7 @@ async def _explain(llm: LocalLLM | None, llm_live: bool,
                 "peak_load_kw": (state.plan or {}).get("peak_load_kw"),
                 "objective": (state.plan or {}).get("objective"),
             },
+            "validator_flags": _validator_flags(state),
             "allowed_citation_ids": allowed,
             "evidence": evidence_digest,
         })
@@ -334,7 +365,7 @@ async def run_agent(mission: str,
                 ok=True, duration_ms=duration_ms,
                 summary=_summarize(tool, result), transport=executor.transport,
                 decided_by="guardrail",
-                thought="completeness guardrail: stage was missing"))
+                thought=f"guardrail completed the pipeline by running {tool}"))
 
     if not (state.validation and state.validation.get("valid")):
         raise toolbox.core.InfeasibleMission(

@@ -44,6 +44,16 @@ class OptimizeScheduleToolTests(unittest.TestCase):
         self.assertIsNotNone(plan["baseline"])
         self.assertNotIn("baseline_note", plan)
 
+    def test_impossible_avoid_hours_surface_a_relaxation_note(self):
+        spec = MissionSpec(tasks=[
+            TaskSpec(task_id="ev", power_kw=3.6, duration_hours=2,
+                     earliest_start=17, latest_end=20)],
+            avoid_hours=[17, 18, 19]).model_dump()
+        plan = optimize_schedule(spec=spec)
+        self.assertFalse(plan["validation"]["avoid_hours_respected"])
+        self.assertIn("relaxed", plan["relaxation_note"])
+        self.assertTrue(plan["validation"]["valid"])
+
     def test_validate_schedule_rejects_empty_input(self):
         with self.assertRaises(ValueError):
             validate_schedule([])

@@ -61,6 +61,7 @@ export type BackendPlan = {
   peak_load_kw: number;
   baseline?: BackendPlan | null;
   baseline_note?: string;
+  relaxation_note?: string;
   snapshot_mode?: string;
   tariff?: number[];
   stress?: number[];
@@ -127,6 +128,69 @@ export async function fetchHealth(timeoutMs = 2500): Promise<BackendHealth | nul
     const response = await withTimeout(fetch(`${apiBase()}/health`), timeoutMs);
     if (!response.ok) return null;
     return (await response.json()) as BackendHealth;
+  } catch {
+    return null;
+  }
+}
+
+export type RetrievalModeResult = {
+  queries: number;
+  hit_at_1: number;
+  recall_at_4: number;
+  mrr: number;
+};
+
+export type IntentExtractorResult = {
+  missions: number;
+  exact_match: number;
+  per_field: Record<string, number>;
+};
+
+export type EvaluationResults = {
+  environment: {
+    generated_at: string;
+    llm_model: string | null;
+    embeddings_backend: string | null;
+    embeddings_model?: string | null;
+    corpus_chunks: number;
+  };
+  retrieval: {
+    bm25?: RetrievalModeResult;
+    dense?: RetrievalModeResult;
+    hybrid?: RetrievalModeResult;
+  };
+  intent: Record<string, IntentExtractorResult>;
+  llm_only_baseline: {
+    skipped?: string;
+    model?: string;
+    attempts?: number;
+    constraint_valid_rate?: number | null;
+    violation_or_failure_rate?: number | null;
+    schema_failures?: number;
+    avg_cost_gap_eur_when_valid?: number | null;
+  };
+  greedy_ablation: {
+    cases: {
+      case: string;
+      joint_cost_eur: number | null;
+      greedy_cost_eur: number | null;
+      greedy_valid: boolean;
+    }[];
+    greedy_failures: number;
+    joint_failures: number;
+  };
+  agent_properties: {
+    citation_precision: number;
+    explanations_rejected_by_guard: number;
+    deterministic_plan_replay: boolean;
+  };
+};
+
+export async function fetchEvaluation(timeoutMs = 4000): Promise<EvaluationResults | null> {
+  try {
+    const response = await withTimeout(fetch(`${apiBase()}/api/evaluation`), timeoutMs);
+    if (!response.ok) return null;
+    return (await response.json()) as EvaluationResults;
   } catch {
     return null;
   }
