@@ -116,7 +116,7 @@ export const evidenceCorpus: Evidence[] = [
   {
     id: "policy-capacity#1",
     title: "Capacity tariff — The FlexiGrid connection limit",
-    excerpt: "Controllable household load is capped at 4.6 kW; a single violating hour can raise the capacity bill for twelve months.",
+    excerpt: "This demonstration caps controllable load at 4.6 kW. It does not calculate regulated capacity charges or the household connection limit.",
     tag: "Grid constraint",
     tokens: ["grid", "capacity", "load", "4.6", "kw", "peak", "limit"],
   },
@@ -235,10 +235,10 @@ function optionScore(hour: number, task: Task, objective: Objective) {
   let total = 0;
   for (let offset = 0; offset < task.duration; offset += 1) {
     const h = hour + offset;
-    const normalizedPrice = tariff[h] / Math.max(...tariff);
+    const normalizedPrice = tariff[h] / 0.30;
     const normalizedGrid = gridStress[h] / 100;
-    const costWeight = objective === "cost" ? 0.84 : objective === "grid" ? 0.18 : 0.56;
-    total += costWeight * normalizedPrice + (1 - costWeight) * normalizedGrid;
+    total += task.powerKw * (objective === "cost" ? tariff[h] : objective === "grid"
+      ? normalizedGrid : 0.56 * normalizedPrice + 0.44 * normalizedGrid);
   }
   return total;
 }
@@ -251,7 +251,7 @@ function taskMetrics(task: Task, start: number) {
     cost += task.powerKw * tariff[h];
     stress += gridStress[h];
   }
-  return { cost: round(cost), gridScore: Math.round(stress / task.duration) };
+  return { cost: round(cost, 6), gridScore: Math.round(stress / task.duration) };
 }
 
 function scheduleAtEarliest(scenario: Scenario): ScheduledTask[] {
@@ -322,16 +322,29 @@ function toHourlyLoad(schedule: ScheduledTask[]) {
   for (const task of schedule) {
     for (let hour = task.start; hour < task.end; hour += 1) load[hour] += task.powerKw;
   }
-  return load.map((value) => round(value, 1));
+  return load;
 }
 
 export function validateSchedule(schedule: ScheduledTask[], scenario: Scenario) {
-  const hourlyLoad = toHourlyLoad(schedule);
-  const withinWindows = schedule.every(
-    (task) => task.start >= task.earliestStart && task.end <= task.latestEnd,
-  );
-  const belowCapacity = hourlyLoad.every((value) => value <= scenario.maxGridLoadKw + 1e-9);
-  return { withinWindows, belowCapacity, valid: withinWindows && belowCapacity };
+  const expected = new Map(scenario.tasks.map(task => [task.id, task]));
+  const ids = new Set(schedule.map(task => task.id));
+  const complete = schedule.length > 0 && expected.size === scenario.tasks.length &&
+    ids.size === schedule.length && ids.size === expected.size && [...ids].every(id => expected.has(id));
+  const withinWindows = complete && schedule.every(task => {
+    const original = expected.get(task.id);
+    return original && Number.isInteger(task.start) && Number.isInteger(task.end) &&
+      task.start >= 0 && task.end <= 24 && task.end > task.start &&
+      Number.isFinite(task.powerKw) && task.powerKw > 0 &&
+      task.powerKw === original.powerKw && task.duration === original.duration &&
+      task.earliestStart === original.earliestStart && task.latestEnd === original.latestEnd &&
+      task.start >= original.earliestStart && task.end <= original.latestEnd &&
+      task.end - task.start === original.duration;
+  });
+  // Never index the load array with malformed intervals or round before checking.
+  const belowCapacity = withinWindows && Number.isFinite(scenario.maxGridLoadKw) &&
+    scenario.maxGridLoadKw > 0 && toHourlyLoad(schedule).every(value => value <= scenario.maxGridLoadKw + 1e-9);
+  return { withinWindows: Boolean(withinWindows), belowCapacity: Boolean(belowCapacity),
+           valid: Boolean(withinWindows && belowCapacity) };
 }
 
 export function createPlan(scenarioId = "morning", objective?: Objective): Plan {
@@ -341,8 +354,11 @@ export function createPlan(scenarioId = "morning", objective?: Objective): Plan 
   const baseline = scheduleAtEarliest(scenario);
   const totalCost = round(schedule.reduce((sum, task) => sum + task.cost, 0));
   const baselineCost = round(baseline.reduce((sum, task) => sum + task.cost, 0));
-  const averageGridScore = Math.round(schedule.reduce((sum, task) => sum + task.gridScore, 0) / schedule.length);
-  const baselineGridScore = Math.round(baseline.reduce((sum, task) => sum + task.gridScore, 0) / baseline.length);
+  const weightedStress = (items: ScheduledTask[]) => Math.round(
+    items.reduce((sum, task) => sum + task.gridScore * task.powerKw * task.duration, 0) /
+    items.reduce((sum, task) => sum + task.powerKw * task.duration, 0));
+  const averageGridScore = weightedStress(schedule);
+  const baselineGridScore = weightedStress(baseline);
   const checks = validateSchedule(schedule, scenario);
 
   return {

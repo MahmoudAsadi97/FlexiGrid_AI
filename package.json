@@ -12,7 +12,7 @@
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs && npm run test:unit",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "test:unit": "node --experimental-strip-types --test tests/engine.test.ts"
+    "test:unit": "node --experimental-strip-types --test tests/engine.test.ts tests/planning-lab.test.ts"
   },
   "dependencies": {
     "next": "16.2.6",

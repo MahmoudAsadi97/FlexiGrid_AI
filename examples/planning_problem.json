@@ -1,0 +1,17 @@
+{
+  "jobs": [
+    {"task_id": "ev", "power_kw": [3.6, 3.6], "earliest_start": 0, "latest_end": 8},
+    {"task_id": "dishwasher", "power_kw": [1.8, 0.2, 0.15, 0.1], "earliest_start": 0, "latest_end": 8}
+  ],
+  "slot_minutes": 15,
+  "tariff_eur_per_kwh": [0.3, 0.2, 0.1, 0.1, 0.12, 0.15, 0.2, 0.3],
+  "stress": [50, 40, 30, 30, 35, 40, 45, 55],
+  "max_load_kw": 4.6,
+  "background_kw": [0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45, 0.45],
+  "reserve_kw": [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3],
+  "avoid_slots": [],
+  "fixed_starts": {},
+  "objective": "cost",
+  "cost_weight": 0.56,
+  "price_scale_eur_per_kwh": 0.3
+}

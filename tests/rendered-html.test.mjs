@@ -31,4 +31,6 @@ test("renders the FlexiGrid product metadata and first viewport", async () => {
   assert.match(html, /Plan tomorrow(?:&#x27;|')s flexible energy/i);
   assert.match(html, /Elia snapshot/i);
   assert.doesNotMatch(html, /Starter Project/i);
+  assert.match(html, /Planning lab/i);
+  assert.match(html, /Plan with headroom/i);
 });

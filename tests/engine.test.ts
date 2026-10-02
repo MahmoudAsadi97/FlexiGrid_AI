@@ -71,3 +71,13 @@ test("an infeasible mission is rejected instead of displayed", () => {
   };
   assert.throws(() => optimizeScenario(infeasible), /No feasible schedule/);
 });
+
+
+test("offline validator binds every task to the original scenario", () => {
+  const plan = createPlan("morning", "cost");
+  for (const broken of [[], plan.schedule.slice(1), [...plan.schedule, plan.schedule[0]],
+    [{ ...plan.schedule[0], powerKw: 0.001 }, ...plan.schedule.slice(1)],
+    [{ ...plan.schedule[0], end: 99 }, ...plan.schedule.slice(1)]]) {
+    assert.equal(validateSchedule(broken, plan.scenario).valid, false);
+  }
+});
