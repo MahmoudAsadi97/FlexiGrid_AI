@@ -1,5 +1,6 @@
 """Model Context Protocol: real stdio round-trip against the FastMCP server."""
 
+import os
 import sys
 import unittest
 
@@ -21,7 +22,8 @@ class McpStdioTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_server_lists_all_tools_and_answers_calls(self):
         parameters = StdioServerParameters(
-            command=sys.executable, args=["-m", "flexigrid.mcp_server"])
+            command=sys.executable, args=["-m", "flexigrid.mcp_server"],
+            env=dict(os.environ))
         async with stdio_client(parameters) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()

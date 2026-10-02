@@ -43,7 +43,7 @@ class MissionSpec(BaseModel):
 class Explanation(BaseModel):
     summary: str = Field(description="Concise explanation of the verified plan")
     rationale: list[str] = Field(min_length=2, max_length=4)
-    citation_ids: list[str] = Field(min_length=1, max_length=6)
+    citation_ids: list[str] = Field(min_length=0, max_length=6)
     limitation: str
 
 

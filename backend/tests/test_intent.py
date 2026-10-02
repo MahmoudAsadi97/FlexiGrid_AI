@@ -39,15 +39,32 @@ class RuleParserTests(unittest.TestCase):
         spec = rule_based_spec("Charge the EV by 07:00, keep load below 3.6 kW")
         self.assertEqual(spec.max_load_kw, 3.6)
 
-    def test_half_hour_deadline_rounds_up(self):
+    def test_half_hour_deadline_rounds_down(self):
         spec = rule_based_spec("Preheat the home by 06:30")
-        self.assertEqual(spec.tasks[0].latest_end, 7)
+        self.assertEqual(spec.tasks[0].latest_end, 6)
 
     def test_after_constraint_sets_earliest(self):
         spec = rule_based_spec("Charge the EV after 14:00 and before 23:00")
         ev = next(t for t in spec.tasks if t.task_id == "ev")
         self.assertEqual(ev.earliest_start, 14)
         self.assertEqual(ev.latest_end, 23)
+
+    def test_half_hour_earliest_rounds_up(self):
+        spec = rule_based_spec("Charge the EV after 14:30 and before 23:00")
+        self.assertEqual(spec.tasks[0].earliest_start, 15)
+
+    def test_impossible_user_window_is_not_widened(self):
+        with self.assertRaises(ValueError):
+            rule_based_spec("Charge the EV after 06:00 before 07:00")
+
+    def test_invalid_clock_time_is_rejected(self):
+        with self.assertRaises(ValueError):
+            rule_based_spec("Charge the EV before 07:99")
+
+    def test_unsupported_capacity_is_not_silently_replaced(self):
+        for cap in ("0.5", "16.5"):
+            with self.assertRaises(ValueError):
+                rule_based_spec(f"Charge the EV before 07:00 below {cap} kW")
 
     def test_no_device_mention_schedules_full_set(self):
         spec = rule_based_spec("Get everything ready before 07:00 please")
@@ -63,15 +80,12 @@ class SanitizerTests(unittest.TestCase):
         self.assertEqual(spec.tasks[0].power_kw, 3.6)
         self.assertTrue(any("outside plausible range" in a for a in adjustments))
 
-    def test_too_short_window_is_widened(self):
+    def test_too_short_window_is_rejected_without_widening(self):
         raw = MissionSpec(tasks=[TaskSpec(task_id="ev", power_kw=3.6,
                                           duration_hours=2, earliest_start=6,
                                           latest_end=7)])
-        spec, adjustments = sanitize(raw)
-        task = spec.tasks[0]
-        self.assertGreaterEqual(task.latest_end - task.earliest_start,
-                                task.duration_hours)
-        self.assertTrue(adjustments)
+        with self.assertRaises(ValueError):
+            sanitize(raw)
 
     def test_duplicate_tasks_are_dropped(self):
         raw = MissionSpec(tasks=[
@@ -113,14 +127,14 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(result.spec.tasks[0].latest_end, 7)
         self.assertTrue(any("24-hour" in item for item in result.adjustments))
 
-    def test_degenerate_avoid_hours_are_dropped(self):
+    def test_large_avoid_list_is_preserved_for_explicit_planner_handling(self):
         raw = MissionSpec(tasks=[TaskSpec(task_id="ev", power_kw=3.6,
                                           duration_hours=2, earliest_start=0,
                                           latest_end=24)],
                           avoid_hours=list(range(22)))
         spec, adjustments = sanitize(raw)
-        self.assertEqual(spec.avoid_hours, [])
-        self.assertTrue(any("degenerate" in item for item in adjustments))
+        self.assertEqual(spec.avoid_hours, list(range(22)))
+        self.assertFalse(adjustments)
 
     def test_small_avoid_lists_survive_sanitizing(self):
         raw = MissionSpec(tasks=[TaskSpec(task_id="ev", power_kw=3.6,

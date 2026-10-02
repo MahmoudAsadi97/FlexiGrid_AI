@@ -1,132 +1,143 @@
 # FlexiGrid AI
 
-A local-LLM agent that plans household energy flexibility for Belgium: free-text missions become typed constraints, a genuine tool-using agent runs over MCP contracts (hybrid RAG, Elia Open Data, a deterministic optimizer), an independent critic gates every plan, and the model's explanation may cite only retrieved evidence. Fully offline — no cloud API key anywhere.
+Evidence-grounded household energy planning with a local language model, explicit numerical constraints, and independently checked schedules.
 
-[Demo guide](docs/DEMO_AND_DEFENSE.md) · [Measured results](backend/evaluation/RESULTS.md)
+**Research prototype. Advisory only. No real devices are controlled.**
 
-![FlexiGrid AI planning dashboard](docs/figures/flexigrid-dashboard.jpg)
+[Research review and upgrade rationale](docs/RESEARCH_UPGRADE.md) · [Current evaluation](backend/evaluation/RESULTS.md) · [Planner benchmark](backend/evaluation/planning_results.json) · [Demo guide](docs/DEMO_AND_DEFENSE.md)
 
-## The design in one paragraph
+![FlexiGrid planning dashboard](docs/figures/flexigrid-dashboard.jpg)
 
-The model proposes, code disposes. A local model (default `qwen2.5:3b-instruct` via Ollama) extracts a typed `MissionSpec` from free text — a deterministic sanitizer clamps every value. The same model then drives an agent loop, choosing among five typed tools; guardrails overrule repeated tools and premature finishes, and complete any stage the model skips, with every decision labelled `llm` or `guardrail` in the trace. Schedules come only from a joint constrained search and pass an independent hour-by-hour validator before display. Explanations are schema-constrained and rejected if they cite outside the retrieved allow-list. Remove the model entirely and the pipeline still runs deterministically — clearly labelled as such.
+## Two ways to use it
+
+**Mission planner:** describe a household task in English. A local model or labelled rule-based fallback extracts a specification, retrieves evidence, and uses MCP-compatible tools. An hourly MILP computes the schedule. A mandatory local gate checks it against the extracted specification before explanation. Four catalog devices are supported. Review the extracted constraints: language understanding, actual room temperature and EV state of charge are not verified.
+
+**Planning lab:** specify a numerical problem directly, using 15-, 30- or 60-minute slots, variable appliance profiles, background load, an explicit forecast-error reserve, hard avoid slots and fixed starts. Inspect computed load traces, energy, cost, solver status, remaining optimality gap and the input fingerprint. Import or export JSON. This interface requires the real Python backend and does not fabricate an offline result.
+
+The original offline frontend demonstration remains separate and labelled; it is not the advanced MILP solver.
+
+## Research-backed planning upgrade
+
+- Time-indexed MILP through SciPy/HiGHS, with a bounded exhaustive development oracle and a separately implemented benchmark reference.
+- Power- and duration-weighted objectives. Cost means monetary cost; grid means stress-weighted energy. Zero and negative input prices are supported.
+- Advanced capacity accounting includes forecast background plus flexible load plus reserve. Legacy plans explicitly cover controllable loads only.
+- One-sided, whole-block split-conformal reserve calibration from held-out forecasts and actuals, with finite-sample rank correction and explicit exchangeability assumptions.
+- State-owned tool arguments, prerequisite checks and mission-bound final validation. Model suggestions cannot replace the schedule or capacity used by the validator.
+- Conservative hourly rule-parser rounding and rejection of impossible windows. The sanitizer no longer moves a task earlier just to make it fit.
+- Citation ID validity is labelled honestly. It is not semantic citation support, and empty retrieval does not produce an invented citation.
+- Automated backend/MCP, frontend, type-check and benchmark workflows.
+
+The research review maps each change to primary papers, describes the mathematical contract and separates implemented features from future thermal MPC, forecasting, CityLearn, reinforcement learning and federated learning work.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[Free-text mission] --> B[Local LLM agent\nintent + tool loop]
-    B --> C[MCP tools\nRAG · Elia · optimizer]
-    C --> D[Optimizer + critic\ndeterministic gate]
-    D --> E[Cited explanation\nallow-listed]
+    A[Free-text mission] --> B[Local model or rules]
+    B --> C[Typed hourly specification]
+    C --> D[State-owned tools and retrieval]
+    D --> E[Time-indexed MILP]
+    J[Planning lab: explicit slot profiles] --> E
+    K[Held-out forecast errors] --> L[Conformal reserve]
+    L --> J
+    E --> F[Independent request-bound checker]
+    F --> G[Advisory schedule and measured status]
 ```
 
-| Layer | Responsibility | Implementation |
+| Component | Responsibility | Source |
 | --- | --- | --- |
-| Interface | Free-text missions, live agent trace, honest metrics | `components/flexigrid-dashboard.tsx`, `lib/api.ts` |
-| Agent | Model-driven tool loop with guardrails and a full trace | `backend/flexigrid/agent.py` |
-| Intent | Mission text → typed, sanitized constraints | `backend/flexigrid/intent.py` |
-| Retrieval | BM25 + dense embeddings + reciprocal-rank fusion | `backend/flexigrid/retrieval.py`, `embeddings.py`, `ingest.py` |
-| Corpus | 15 documents / 51 chunks with source-type labels | `backend/flexigrid/corpus/` |
-| Tools & MCP | One registry: FastMCP server + stdio client host + API | `tools.py`, `mcp_server.py`, `mcp_host.py` |
-| Data | Elia v2.1 records → derived hourly stress with provenance | `elia_client.py`, `derive.py` |
-| Planning | Joint constrained search, greedy ablation, validator | `core.py` |
-| LLM | OpenAI-compatible client: json-mode, repair loop, fallback | `llm.py` |
-| Evaluation | Retrieval/intent/baseline/ablation harness → results.json | `evaluate.py` |
+| Advanced planner | Typed problem, MILP, original-request checker | `backend/flexigrid/planning.py` |
+| Uncertainty | Held-out block-max reserve calibration | `backend/flexigrid/uncertainty.py` |
+| Hourly compatibility | Legacy task interface, baselines, mission-bound validator | `backend/flexigrid/core.py` |
+| Agent and intent | Tool loop, argument ownership, extracted constraints | `agent.py`, `intent.py` |
+| Retrieval | BM25, dense embeddings and reciprocal-rank fusion | `retrieval.py`, `embeddings.py` |
+| MCP | Existing five-tool registry and stdio host/server | `tools.py`, `mcp_host.py`, `mcp_server.py` |
+| Advanced interface | Backend-computed planning and JSON import/export | `components/planning-lab.tsx` |
+| Benchmarks | Independent reference, scaling and shift diagnostics | `benchmark_planning.py` |
 
 ## Quick start
 
-### 1. Local model (Ollama)
-
-Install [Ollama](https://ollama.com), then:
-
-```bash
-ollama pull qwen2.5:3b-instruct
-ollama pull nomic-embed-text
-```
-
-Any OpenAI-compatible endpoint works instead (LM Studio, llama.cpp server, vLLM) — set `FLEXIGRID_LLM_BASE_URL` / `FLEXIGRID_LLM_MODEL` in `backend/.env`.
-
-### 2. Backend
-
-Requirements: Python 3.11+.
+Python 3.11+ and Node.js 22.13+ are required. From the repository root:
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env             # Windows: copy .env.example .env
-python -m flexigrid.doctor       # verifies corpus, retrieval, LLM, agent, MCP
-uvicorn flexigrid.api:app --port 8000
+cp .env.example .env
+uvicorn flexigrid.api:app --host 127.0.0.1 --port 8000
 ```
 
-`doctor` tells you exactly what is missing and how to fix it. Without any model, everything still runs in labelled deterministic mode.
-
-### 3. Interface
-
-Requirements: Node.js 22.13+.
+In a second terminal:
 
 ```bash
 npm ci
-npm run dev        # http://localhost:3000 — the top bar shows "Live pipeline · <model>"
+npm run dev
 ```
 
-### 4. The agent over a real MCP session
+Open `http://localhost:3000` and select **Planning lab**. Load the synthetic sample, solve it, inspect the results and export the request/result pair. The sample prices, stress and background are not live Belgian measurements. A manual reserve is not statistically calibrated.
+
+### Optional local language model
 
 ```bash
+ollama pull qwen2.5:3b-instruct
+ollama pull nomic-embed-text
 cd backend
+python -m flexigrid.doctor
 python -m flexigrid.mcp_host "Charge the EV and run the dishwasher before 07:00"
-python -m flexigrid.mcp_server     # or serve the tools to any other MCP host
 ```
 
-### 5. Live Elia data (optional)
+Configure a compatible endpoint in `backend/.env` when using another runtime. Without model weights, the mission planner runs in labelled deterministic mode. The numerical Planning lab never needs an LLM.
+
+### Advanced HTTP API
+
+```bash
+curl http://localhost:8000/api/planning/solve \
+  -H 'Content-Type: application/json' \
+  --data-binary @examples/planning_problem.json
+```
+
+Run that command from the repository root. The response includes starts, reconstructed loads and metrics, solver status/gap and a normalized-input SHA-256. Numerical infeasibility returns HTTP 422; stopping without an acceptable incumbent returns 503. The advanced API never silently relaxes hard avoid slots.
+
+`POST /api/planning/calibrate` accepts `forecasts_kw`, `actuals_kw` and `alpha`. Both arrays contain matching held-out whole-horizon blocks. Use forecasts made without the corresponding outcomes. Calibration requires exchangeable blocks and does not provide a drift-robust or physical safety guarantee.
+
+### Elia data
 
 ```bash
 cd backend
-python scripts/fetch_elia_snapshot.py   # raw records with timestamps
-ELIA_USE_LIVE=true uvicorn flexigrid.api:app   # derive stress from live records
+python scripts/fetch_elia_snapshot.py
+ELIA_USE_LIVE=true uvicorn flexigrid.api:app --port 8000
 ```
 
-The exam demo defaults to the labelled frozen fixture so every number reproduces offline.
+The mission demo defaults to the explicitly labelled fixture. The derived stress index is not a carbon-intensity or grid-security measurement. Retail tariff remains a separate input. The new lab takes explicit series and does not automatically reinterpret the Elia adapter as a quarter-hour household forecast.
 
-## Tests — 93, all offline
+## Verify and reproduce
 
 ```bash
-npm test            # frontend: build + rendered-output + engine tests
-npm run test:unit   # frontend engine tests only (no build needed)
 npm run lint
+npx tsc --noEmit
+npm test
 
 cd backend
-python -m unittest discover -s tests -v   # 85 tests: optimizer, retrieval,
-                                          # intent, LLM client, agent guardrails,
-                                          # API, MCP stdio round-trip, derivation
+FLEXIGRID_EMBEDDINGS=tfidf python -m unittest discover -s tests -v
+FLEXIGRID_EMBEDDINGS=tfidf python -m flexigrid.evaluate --skip-llm
+python -m flexigrid.benchmark_planning
 ```
 
-A deterministic reference LLM server (`backend/flexigrid/dev_mock_llm.py`) ships with the repository, so the complete agent code path — including malformed-JSON repair and the guardrails against non-compliant agent decisions — is tested on machines without model weights.
+`npm test` builds, checks rendered HTML and runs frontend unit tests. Backend tests include real MCP stdio round-trips, numerical edge cases and hostile agent/executor behavior. Model-client tests use a deterministic mock server; passing them does not establish the quality of a real model.
 
-## Evaluation
+The recorded independent benchmark matched 200 small reference problems: 110 feasible and 90 infeasible, with zero disagreements. Larger 32/64-job cases returned valid time-limited incumbents rather than proven optima. See the JSON for exact gaps, timings, dependency versions and source fingerprint.
 
-```bash
-cd backend
-python -m flexigrid.evaluate        # writes evaluation/results.json + RESULTS.md
-python ../docs/build_report.py      # report tables refresh from results.json
-python ../docs/build_deck.py        # deck numbers refresh too
-```
+The reserve diagnostic achieved 92.8% whole-block coverage on synthetic held-out data, falling to 0.4% after an unmodelled +0.2 kW shift. That failure is intentionally retained. These are implementation diagnostics, not evidence of household savings or coverage on real time series.
 
-Measured per subsystem: retrieval (40 labelled queries; hit@1 / recall@4 / MRR for BM25, dense, hybrid), intent extraction (15 labelled missions; LLM vs rule-based ablation), **Baseline B** (the LLM scheduling directly — its constraint-violation rate is the argument for the whole architecture), the greedy-search ablation (fails outright where joint search succeeds, including the standard morning mission), citation precision, and deterministic replay. `results.json` records which model and embedding backend produced every number.
+Current retrieval/intent results were regenerated in deterministic mode. Historical August model measurements are preserved in `backend/evaluation/historical/`, not presented as measurements of this revision. The inherited 15-mission labels are simplified and require redesign for minute-accurate, per-device evaluation.
 
-## Scope and limitations
+## Limits before deployment
 
-- Missions are single-day, four known device types; the intent layer clamps to a device catalog by design.
-- Exhaustive joint search is optimal for the small daily problem; production scale needs MILP/CP-SAT behind the same tool contract.
-- The stress signal ignores solar, imports and outages — a demonstration-grade ranking signal, documented in the corpus itself.
-- Advisory only: no device is ever commanded. A real pilot needs consent, billing contracts, fail-safe control and GDPR controls.
-- Local-model quality numbers depend on the machine's model; the harness re-measures in one command and stamps provenance.
+The advanced model supports at most 64 non-interruptible jobs and 192 equal elapsed-time slots. Upstream code must align civil dates, timezones, daylight-saving transitions, forecast vintages and units. It does not model electrical transients, network power flows, tariff taxes, thermal comfort, EV state of charge or battery/PV dispatch.
 
-## Academic deliverables
+Default CORS permits the local frontend, but the API has no production authentication, request-rate control or device authorization. Do not expose it publicly as-is. A physical pilot needs independently enforced hardware protection, validated equipment models, consent, failure handling and monitored fresh data. Neither an input hash nor a passing numerical checker certifies the real world.
 
-The technical report and defense deck are generated locally and submitted separately — they are deliberately not stored in this repository:
+## Earlier academic material
 
-- Technical report: `python docs/build_report.py` → `deliverables/FlexiGrid_AI_Technical_Report.docx` (numbers are read from `backend/evaluation/results.json`)
-- Defense deck with speaker notes: `python docs/build_deck.py` → `deliverables/FlexiGrid_AI_Defense_Deck.pptx`
-- [Demo & examiner Q&A guide](docs/DEMO_AND_DEFENSE.md) · [Submission checklist](docs/SUBMISSION_CHECKLIST.md)
+The demo guide and document/deck builders remain available, but their historical narrative and figures may need updating for this architecture. The source screenshot above shows the original dashboard, not a capture of the new Planning lab. Generate academic deliverables separately and verify their descriptions against the current research review before submission.

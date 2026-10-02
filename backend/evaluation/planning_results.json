@@ -1,0 +1,78 @@
+{
+  "generated_at": "2026-10-02T12:44:13+00:00",
+  "data_source": "synthetic seeded scenarios, no real household data",
+  "seed": 20261002,
+  "source_sha256": "34646aa1e30d4527d556ec98531e325c4b4251e816b55087a3f2195d7fd87b25",
+  "environment": {
+    "python": "3.13.5",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "pydantic": "2.13.4",
+    "platform": "Linux",
+    "machine": "x86_64"
+  },
+  "independent_oracle": {
+    "cases": 200,
+    "feasible_matches": 110,
+    "infeasible_matches": 90,
+    "mismatches": [],
+    "max_absolute_objective_gap": 8.881784197001252e-16,
+    "median_solver_ms": 0.938,
+    "p95_solver_ms": 1.505
+  },
+  "scaling": [
+    {
+      "jobs": 8,
+      "slots": 96,
+      "elapsed_ms": 18.321,
+      "status": "optimal",
+      "mip_gap": 0.0,
+      "valid": true
+    },
+    {
+      "jobs": 16,
+      "slots": 96,
+      "elapsed_ms": 356.659,
+      "status": "optimal",
+      "mip_gap": 0.0,
+      "valid": true
+    },
+    {
+      "jobs": 32,
+      "slots": 96,
+      "elapsed_ms": 3020.193,
+      "status": "feasible-time-limit",
+      "mip_gap": 0.015017048060946888,
+      "valid": true
+    },
+    {
+      "jobs": 64,
+      "slots": 96,
+      "elapsed_ms": 3044.575,
+      "status": "feasible-time-limit",
+      "mip_gap": 0.014852918683277778,
+      "valid": true
+    }
+  ],
+  "uncertainty": {
+    "calibration_blocks": 400,
+    "test_blocks": 1000,
+    "slots_per_block": 24,
+    "alpha": 0.1,
+    "reserve_kw": 0.229746,
+    "covered_test_blocks": 928,
+    "whole_block_coverage": 0.928,
+    "wilson_95_interval_conditional_on_this_calibration": [
+      0.9103,
+      0.9424
+    ],
+    "coverage_after_unmodelled_0_2kw_shift": 0.004,
+    "limitation": "Synthetic coverage diagnostic, not evidence of coverage on real time series."
+  },
+  "limitations": [
+    "runtime is environment-specific, not a production SLA",
+    "MILP/exhaustive agreement tests implementation, not forecast accuracy",
+    "scaling cases have one aggregate cap, not a distribution-network model",
+    "no real-model inference, real billing or device actuation measured"
+  ]
+}

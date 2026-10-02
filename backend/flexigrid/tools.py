@@ -65,11 +65,13 @@ def optimize_schedule(spec: dict[str, Any] | None = None,
         avoid = []
     if chosen_objective not in ("balanced", "cost", "grid"):
         chosen_objective = "balanced"
-    schedule = core.optimize(tasks, chosen_objective,  # type: ignore[arg-type]
+    schedule, solver = core.optimize_detailed(tasks, chosen_objective,  # type: ignore[arg-type]
                              max_load_kw=max_load, tariff=tariff, stress=stress,
                              avoid_hours=avoid)
     plan = core.plan_to_dict(schedule, chosen_objective,  # type: ignore[arg-type]
-                             max_load_kw=max_load, avoid_hours=avoid)
+                             max_load_kw=max_load, avoid_hours=avoid,
+                             tariff=tariff, expected_tasks=tasks)
+    plan["solver"] = solver
     # optimize() relaxes an impossible avoid-hours preference instead of
     # failing; surface that relaxation so no layer can present the plan as
     # fully clean.
@@ -85,7 +87,8 @@ def optimize_schedule(spec: dict[str, Any] | None = None,
                                                 tariff=tariff, stress=stress)
         plan["baseline"] = core.plan_to_dict(
             baseline, chosen_objective,  # type: ignore[arg-type]
-            max_load_kw=max_load, avoid_hours=avoid)
+            max_load_kw=max_load, avoid_hours=avoid,
+            tariff=tariff, expected_tasks=tasks)
     except core.InfeasibleMission as error:
         plan["baseline"] = None
         plan["baseline_note"] = (

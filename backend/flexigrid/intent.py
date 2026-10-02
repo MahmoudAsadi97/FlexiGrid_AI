@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .core import Task
+from .core import InfeasibleMission, Task
 from .llm import LocalLLM
 from .models import (DEFAULT_MAX_LOAD_KW, KNOWN_DEVICES, MissionSpec, Objective,
                      TaskSpec)
@@ -28,7 +28,9 @@ _INTENT_SYSTEM = (
     "2 h; laundry: 0.8 kW for 1 h; heat: 1.4 kW for 2 h. objective is 'cost' when "
     "the mission emphasises price, 'grid' when it emphasises supporting the grid or "
     "wind, else 'balanced'. avoid_hours lists whole hours the mission says to avoid. "
-    "Never invent devices or deadlines that are not in the mission."
+    "Never invent devices or deadlines that are not in the mission. "
+    "For hourly scheduling, round deadlines down and earliest starts up. "
+    "Never widen a time window to make a task fit."
 )
 
 _AMPM_PATTERN = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?\b", re.IGNORECASE)
@@ -93,13 +95,21 @@ def rule_based_spec(mission: str) -> MissionSpec:
     deadline = 24
     match = _HOUR_PATTERN.search(text)
     if match:
-        deadline = _ceil_hour(int(match.group(1)),
-                              int(match.group(2)) if match.group(2) else 0)
-        deadline = max(1, min(deadline, 24))
+        hour, minute = int(match.group(1)), int(match.group(2) or 0)
+        if not (0 <= hour <= 24 and 0 <= minute < 60) or (hour == 24 and minute):
+            raise ValueError("invalid deadline clock time")
+        deadline = hour  # Conservative hourly bound: by 06:30 means end <= 06:00.
+        if deadline < 1:
+            raise InfeasibleMission("no complete hourly slot before the deadline")
     earliest = 0
     after = _AFTER_PATTERN.search(text)
     if after:
-        earliest = max(0, min(int(after.group(1)), 23))
+        hour, minute = int(after.group(1)), int(after.group(2) or 0)
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError("invalid earliest-start clock time")
+        earliest = _ceil_hour(hour, minute)
+        if earliest >= deadline:
+            raise InfeasibleMission("no hourly slot inside the requested time window")
 
     avoid: list[int] = []
     avoid_match = _AVOID_PATTERN.search(text)
@@ -119,7 +129,7 @@ def rule_based_spec(mission: str) -> MissionSpec:
                 # Pre-heat is most useful just before the deadline (comfort policy).
                 start_floor = max(earliest, deadline - 4)
             if latest - start_floor < duration:
-                start_floor = max(0, latest - duration)
+                raise InfeasibleMission(f"{device} does not fit its requested hourly window")
             tasks.append(TaskSpec(
                 task_id=device,  # type: ignore[arg-type]
                 power_kw=float(catalog["power_kw"]),
@@ -132,7 +142,7 @@ def rule_based_spec(mission: str) -> MissionSpec:
             duration = int(catalog["duration_hours"])
             start_floor = earliest if device != "heat" else max(earliest, deadline - 4)
             if deadline - start_floor < duration:
-                start_floor = max(0, deadline - duration)
+                raise InfeasibleMission(f"{device} does not fit its requested hourly window")
             tasks.append(TaskSpec(
                 task_id=device,  # type: ignore[arg-type]
                 power_kw=float(catalog["power_kw"]),
@@ -148,11 +158,12 @@ def rule_based_spec(mission: str) -> MissionSpec:
         objective = "grid" if objective == "balanced" else objective
 
     cap = DEFAULT_MAX_LOAD_KW
-    cap_match = re.search(r"(\d(?:[.,]\d)?)\s*kw", text)
+    cap_match = re.search(r"(\d+(?:[.,]\d+)?)\s*kw\b", text)
     if cap_match:
         parsed_cap = float(cap_match.group(1).replace(",", "."))
-        if 2.0 <= parsed_cap <= 9.2:
-            cap = parsed_cap
+        if not 1.0 < parsed_cap <= 9.2:
+            raise ValueError("legacy capacity must be above 1 and at most 9.2 kW; use the Planning lab for other limits")
+        cap = parsed_cap
 
     return MissionSpec(tasks=tasks, objective=objective, max_load_kw=cap,
                        avoid_hours=avoid, notes="rule-based extraction")
@@ -180,24 +191,17 @@ def sanitize(spec: MissionSpec) -> tuple[MissionSpec, list[str]]:
         latest = max(1, min(task.latest_end, 24))
         duration = max(1, min(task.duration_hours, 6))
         if latest - earliest < duration:
-            new_earliest = max(0, latest - duration)
-            adjustments.append(
-                f"{task.task_id}: window [{earliest}, {latest}) shorter than "
-                f"{duration} h — earliest_start moved to {new_earliest}")
-            earliest = new_earliest
+            raise InfeasibleMission(
+                f"{task.task_id}: window [{earliest}, {latest}) is shorter than "
+                f"{duration} h; the window was not widened")
         tasks.append(TaskSpec(task_id=task.task_id, power_kw=power,
                               duration_hours=duration, earliest_start=earliest,
                               latest_end=latest))
     if not tasks:
         raise ValueError("Mission produced no usable tasks")
-    avoid = sorted({hour % 24 for hour in spec.avoid_hours})
-    if avoid != sorted(spec.avoid_hours):
-        adjustments.append("avoid_hours normalized into 0-23")
-    if len(avoid) >= 12:
-        adjustments.append(
-            f"avoid_hours covered {len(avoid)} of 24 hours — treated as a "
-            f"degenerate extraction and ignored")
-        avoid = []
+    if any(type(hour) is not int or not 0 <= hour < 24 for hour in spec.avoid_hours):
+        raise ValueError("avoid_hours must contain integers in 0-23")
+    avoid = sorted(set(spec.avoid_hours))
     return (MissionSpec(tasks=tasks, objective=spec.objective,
                         max_load_kw=spec.max_load_kw, avoid_hours=avoid,
                         notes=spec.notes),
@@ -211,6 +215,10 @@ def extract_intent(mission: str, llm: LocalLLM | None = None,
     mission, ampm_changed = normalize_mission_text(mission)
     if ampm_changed:
         pre_adjustments.append("AM/PM times normalized to 24-hour form")
+    if re.search(r"\b\d{1,2}:(?!00)\d{2}\b", mission):
+        pre_adjustments.append(
+            "Legacy intent is hourly: rules round deadlines down and starts up; "
+            "review model-extracted bounds, or use the Planning lab for quarter-hour precision")
     if use_llm and llm is not None and llm.available():
         raw_spec, llm_notes = llm.structured(
             MissionSpec, _INTENT_SYSTEM, f"Mission: {mission}")

@@ -14,6 +14,10 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, StrictBool
+from typing import Literal
+from .planning import PlanningProblem, PlanningError, NoIncumbentError, solve
+from .uncertainty import CalibrationRequest, calibrate_reserve
 
 from .agent import run_agent
 from .core import InfeasibleMission
@@ -26,14 +30,14 @@ from .tools import get_grid_snapshot
 
 app = FastAPI(
     title="FlexiGrid AI API",
-    version="2.0.0",
+    version="3.0.0",
     description="Evidence-grounded household energy planning with a local "
                 "LLM, hybrid RAG, MCP tools, and a deterministic optimizer.",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("FLEXIGRID_CORS_ORIGINS", "*").split(","),
+    allow_origins=os.getenv("FLEXIGRID_CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -105,28 +109,54 @@ def grid_snapshot(use_live: bool | None = None) -> dict:
     return get_grid_snapshot(use_live=use_live)
 
 
+class RetrievalRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+    top_k: int = Field(default=4, ge=1, le=8)
+    mode: Literal["bm25", "dense", "hybrid"] = "hybrid"
+
+
+class IntentRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    use_llm: StrictBool = True
+
+
 @app.post("/api/retrieve")
-def retrieve_endpoint(payload: dict) -> list[dict]:
-    query = str(payload.get("query", "")).strip()
-    if not query:
+def retrieve_endpoint(payload: RetrievalRequest) -> list[dict]:
+    if not payload.query.strip():
         raise HTTPException(status_code=422, detail="query is required")
-    top_k = int(payload.get("top_k", 4))
-    mode = str(payload.get("mode", "hybrid"))
-    try:
-        return get_index().retrieve(query, top_k=top_k, mode=mode)
-    except ValueError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+    return get_index().retrieve(payload.query, top_k=payload.top_k, mode=payload.mode)
 
 
 @app.post("/api/intent")
-def intent_endpoint(payload: dict) -> dict:
-    mission = str(payload.get("prompt", "")).strip()
-    if not mission:
+def intent_endpoint(payload: IntentRequest) -> dict:
+    if not payload.prompt.strip():
         raise HTTPException(status_code=422, detail="prompt is required")
-    result = extract_intent(mission, llm=get_llm(),
-                            use_llm=bool(payload.get("use_llm", True)))
+    try:
+        result = extract_intent(payload.prompt, llm=get_llm(), use_llm=payload.use_llm)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     return {"spec": result.spec.model_dump(), "mode": result.mode,
             "adjustments": result.adjustments, "notes": result.notes}
+
+
+@app.post("/api/planning/solve")
+def solve_advanced(problem: PlanningProblem) -> dict:
+    """15/30/60-minute scheduling with power profiles and whole-home headroom."""
+    try:
+        return solve(problem)
+    except PlanningError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except NoIncumbentError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post("/api/planning/calibrate")
+def calibrate_advanced(request: CalibrationRequest) -> dict:
+    """Reserve from held-out forecasts, not a trained forecasting model."""
+    try:
+        return calibrate_reserve(request)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.post("/api/agent/plan", response_model=AgentResponse)
@@ -138,8 +168,10 @@ async def agent_plan(request: PlanRequest) -> dict:
             retrieval_mode=request.retrieval_mode,
             use_llm=request.use_llm,
         )
-    except InfeasibleMission as error:
+    except (InfeasibleMission, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except NoIncumbentError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     try:
         result["modes"]["retrieval_backend"] = get_index().backend.name
     except Exception:  # pragma: no cover

@@ -1,5 +1,7 @@
 "use client";
 
+import PlanningLab from "./planning-lab";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createPlan,
@@ -20,7 +22,7 @@ import {
   type TraceRecord,
 } from "@/lib/api";
 
-type View = "plan" | "evaluation" | "architecture";
+type View = "plan" | "lab" | "evaluation" | "architecture";
 type RunPhase = "idle" | "running" | "complete" | "error";
 
 const TASK_ICONS: Record<string, string> = {
@@ -38,7 +40,7 @@ const RUN_STAGES: {
   { icon: "brain", label: "Extract constraints", detail: "mission text → typed, schema-validated spec" },
   { icon: "database", label: "Grid snapshot", detail: "hourly tariff + Elia-derived stress" },
   { icon: "tool", label: "Retrieve evidence", detail: "hybrid RAG over the device & policy corpus" },
-  { icon: "chart", label: "Optimize schedule", detail: "joint constrained search under the cap" },
+  { icon: "chart", label: "Optimize schedule", detail: "power-weighted MILP under the cap" },
   { icon: "shield", label: "Validate", detail: "independent critic re-checks every hour" },
 ];
 
@@ -161,7 +163,7 @@ function fromLive(run: AgentRunResponse): ViewPlan {
       gridScore: task.grid_stress,
     }));
   const retrieved = new Set(run.evidence.map((chunk) => chunk.chunk_id));
-  const citationsGrounded = run.explanation.citation_ids.every((id) => retrieved.has(id));
+  const citationsGrounded = run.explanation.citation_ids.length > 0 && run.explanation.citation_ids.every((id) => retrieved.has(id));
   const baseline = plan.baseline;
   const baselineCost = baseline?.total_cost_eur ?? plan.total_cost_eur;
   const baselineStress = baseline?.average_grid_stress ?? plan.average_grid_stress;
@@ -169,7 +171,7 @@ function fromLive(run: AgentRunResponse): ViewPlan {
     { label: "Task windows", ok: validation.within_windows },
     { label: `Load ≤ ${validation.max_load_kw} kW`, ok: validation.below_capacity },
     { label: "Avoid-hours", ok: validation.avoid_hours_respected },
-    { label: "Citations grounded", ok: citationsGrounded },
+    { label: "Citation IDs valid", ok: citationsGrounded },
   ];
   return {
     source: "live",
@@ -923,7 +925,7 @@ function EvaluationView() {
         <section className="results-panel">
           <div className="section-heading">
             <div><span className="eyebrow">MEASURED RESULTS</span><h2>results.json, rendered live</h2></div>
-            <span className="suite-status"><i /> {measured ? "read from the running backend" : "packaged snapshot"} · {modelLabel}</span>
+            <span className="suite-status"><i /> {measured ? "read from the running backend" : "historical packaged snapshot"} · {modelLabel}</span>
           </div>
           <div className="results-table-wrap">
             <table className="results-table">
@@ -983,7 +985,7 @@ function EvaluationView() {
             </table>
           </div>
           <div className="property-chips">
-            <span className="property-chip"><Icon name="check" /> citation precision {percent(agentProps.citation_precision)}</span>
+            <span className="property-chip"><Icon name="check" /> citation ID validity {percent(agentProps.citation_precision)}</span>
             <span className="property-chip"><Icon name="check" /> deterministic replay {agentProps.deterministic_plan_replay ? "yes" : "no"}</span>
             <span className="property-chip"><Icon name="shield" /> {agentProps.explanations_rejected_by_guard} explanation{agentProps.explanations_rejected_by_guard === 1 ? "" : "s"} rejected by the citation guard</span>
           </div>
@@ -1003,7 +1005,7 @@ function EvaluationView() {
             <li><b>1</b><div><strong>Retrieval</strong><span>hit@1, recall@4, MRR on 40 labelled queries — BM25 vs dense vs hybrid.</span></div></li>
             <li><b>2</b><div><strong>Intent</strong><span>device/deadline/objective/cap accuracy on 15 missions — LLM vs rules.</span></div></li>
             <li><b>3</b><div><strong>Planning</strong><span>constraint validity, cost vs baselines, greedy-search ablation.</span></div></li>
-            <li><b>4</b><div><strong>Generation</strong><span>citation precision against the retrieved allow-list; guard rejections.</span></div></li>
+            <li><b>4</b><div><strong>Generation</strong><span>retrieved-ID validity, not semantic support; guard rejections.</span></div></li>
           </ol>
           <div className="limitation-box"><strong>Honest limitation</strong><p>Local-model numbers depend on the machine&apos;s model (default qwen2.5:3b-instruct). Re-run the harness after switching models; results.json records the provenance of every figure.</p></div>
         </aside>
@@ -1034,7 +1036,7 @@ function ArchitectureView() {
         <div className="flow-arrow"><Icon name="arrow" /></div>
         <article className="architecture-node accent-node"><span>04</span><div className="node-icon"><Icon name="brain" /></div><h2>Optimizer + critic</h2><p>Joint constrained search; independent re-validation gates every displayed plan.</p><em>Deterministic</em></article>
         <div className="flow-arrow"><Icon name="arrow" /></div>
-        <article className="architecture-node"><span>05</span><div className="node-icon"><Icon name="shield" /></div><h2>Cited explanation</h2><p>Schema-constrained generation; citations restricted to the retrieved allow-list.</p><em>Grounded output</em></article>
+        <article className="architecture-node"><span>05</span><div className="node-icon"><Icon name="shield" /></div><h2>Cited explanation</h2><p>Schema-constrained generation; citations restricted to the retrieved allow-list.</p><em>ID-checked output</em></article>
       </section>
 
       <section className="data-contracts">
@@ -1098,6 +1100,7 @@ export default function FlexiGridDashboard() {
         </button>
         <nav aria-label="Primary navigation">
           <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")}>Plan</button>
+          <button className={view === "lab" ? "active" : ""} onClick={() => setView("lab")}>Planning lab</button>
           <button className={view === "evaluation" ? "active" : ""} onClick={() => setView("evaluation")}>Evaluation</button>
           <button className={view === "architecture" ? "active" : ""} onClick={() => setView("architecture")}>Architecture</button>
         </nav>
@@ -1107,6 +1110,7 @@ export default function FlexiGridDashboard() {
           the Q&A round, Plan → Architecture → Plan must not wipe the trace. */}
       <div className="content-shell">
         <div hidden={view !== "plan"}><PlanView health={health} /></div>
+        <div hidden={view !== "lab"}><PlanningLab /></div>
         <div hidden={view !== "evaluation"}><EvaluationView /></div>
         <div hidden={view !== "architecture"}><ArchitectureView /></div>
       </div>

@@ -11,7 +11,7 @@ retrieval or planning failure:
                 rate, the number that justifies the hybrid architecture.
 4. Ablation   — greedy vs joint constrained search, including the tight-
                 window case class where greedy fails outright.
-5. Citations  — explanation citation precision against the retrieved
+5. Citations  — explanation citation ID validity against the retrieved
                 allow-list, plus how often the guard had to reject.
 6. Determinism— identical inputs must give identical plans.
 
@@ -198,7 +198,8 @@ def evaluate_llm_only_baseline(llm: LocalLLM | None, use_llm: bool,
                 schema_failures += 1
                 continue
             starts = {item.task_id: item.start for item in proposal.assignments}
-            if set(starts) != {task.task_id for task in tasks}:
+            if (len(proposal.assignments) != len(tasks)
+                    or set(starts) != {task.task_id for task in tasks}):
                 schema_failures += 1
                 continue
             scheduled = []
@@ -214,7 +215,7 @@ def evaluate_llm_only_baseline(llm: LocalLLM | None, use_llm: bool,
                     cost_eur=round(cost, 2), grid_stress=0))
             else:
                 verdict = core.validate(scheduled, spec.max_load_kw,
-                                        spec.avoid_hours)
+                                        spec.avoid_hours, expected_tasks=tasks)
                 if verdict["valid"]:
                     valid_count += 1
                     llm_cost = sum(task.cost_eur for task in scheduled)
@@ -324,6 +325,8 @@ async def evaluate_agent_properties(use_llm: bool) -> dict:
     deterministic = first["plan"] == second["plan"]
     return {
         "citation_precision": round(statistics.mean(citation_precisions), 3),
+        "citation_id_validity": round(statistics.mean(citation_precisions), 3),
+        "citation_metric_note": "ID allow-list membership only; semantic support is not measured",
         "explanations_rejected_by_guard": rejections,
         "deterministic_plan_replay": deterministic,
         "agent_runs": len(runs),
@@ -402,7 +405,7 @@ def render_markdown(results: dict) -> str:
                  f"joint search failed on 0.")
     agent = results["agent_properties"]
     lines += ["", "## 5. Agent properties", "",
-              f"- Citation precision vs retrieved allow-list: "
+              f"- Citation ID validity vs retrieved allow-list: "
               f"**{agent['citation_precision']:.3f}**",
               f"- Explanations rejected by the citation guard: "
               f"{agent['explanations_rejected_by_guard']}",

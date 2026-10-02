@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./planning-lab.css";
 
 export const metadata: Metadata = {
   title: "FlexiGrid AI — Evidence-grounded energy planning",

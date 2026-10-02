@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import json
 import time
+
+from .intent import spec_to_tasks
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Protocol
 
@@ -137,10 +139,8 @@ def _default_args(tool: str, state: AgentState) -> dict[str, Any]:
     if tool == "retrieve_evidence":
         return {"query": state.mission, "top_k": 4, "mode": state.retrieval_mode}
     if tool == "optimize_schedule":
-        args: dict[str, Any] = {"spec": state.spec}
-        if state.objective:
-            args["objective"] = state.objective
-        return args
+        return {"spec": state.spec,
+                "objective": state.objective or (state.spec or {}).get("objective", "balanced")}
     if tool == "validate_schedule":
         plan = state.plan or {}
         spec = state.spec or {}
@@ -148,6 +148,21 @@ def _default_args(tool: str, state: AgentState) -> dict[str, Any]:
                 "max_load_kw": spec.get("max_load_kw", 4.6),
                 "avoid_hours": spec.get("avoid_hours", [])}
     return {}
+
+
+def _safe_args(decision: AgentDecision, state: AgentState, use_llm: bool) -> dict[str, Any]:
+    """The model may refine retrieval, but cannot grant itself authority."""
+    args = _default_args(decision.tool, state)
+    if decision.tool == "extract_constraints":
+        args["use_llm"] = use_llm
+    if decision.tool == "retrieve_evidence":
+        query = decision.args.get("query")
+        if isinstance(query, str) and query.strip():
+            args["query"] = query[:2000]
+        top_k = decision.args.get("top_k")
+        if type(top_k) is int:
+            args["top_k"] = min(max(top_k, 1), 8)
+    return args
 
 
 def _apply_result(tool: str, result: Any, state: AgentState) -> None:
@@ -200,8 +215,12 @@ async def _decide(llm: LocalLLM | None, state: AgentState,
                              or state.retrieve_calls >= 2))
             premature = decision.tool == "finish" and not (
                 state.plan and state.validation and state.validation.get("valid"))
-            if not repeated and not premature:
+            index = _CANONICAL_ORDER.index(decision.tool)
+            missing = [name for name in _CANONICAL_ORDER[:index] if name not in state.done]
+            if not repeated and not premature and not missing:
                 return decision, "llm", notes
+            if missing:
+                notes.append("decision overruled: prerequisites missing: " + ", ".join(missing))
             reason = ("retrieval already ran twice"
                       if decision.tool == "retrieve_evidence"
                       else "repeated a completed tool") if repeated \
@@ -229,18 +248,20 @@ def _validator_flags(state: AgentState) -> list[str]:
 
 
 def _fallback_explanation(state: AgentState) -> Explanation:
-    citations = [item["chunk_id"] for item in state.evidence][:4] or ["pipeline-stress#0"]
+    citations = [item["chunk_id"] for item in state.evidence][:4]
     plan = state.plan or {}
     flags = _validator_flags(state)
     summary = (f"The schedule finishes every task inside its window for "
                f"€{plan.get('total_cost_eur', '?')} with a peak of "
                f"{plan.get('peak_load_kw', '?')} kW, below the "
-               f"{(state.spec or {}).get('max_load_kw', 4.6)} kW connection cap.")
+               f"{(state.spec or {}).get('max_load_kw', 4.6)} kW controllable-load cap.")
     if flags:
         summary += (f" The independent validator flagged: {', '.join(flags)} — "
                     f"honouring every stated constraint left no feasible "
                     f"schedule, so the conflict is reported here instead of "
                     f"being hidden.")
+    if not citations:
+        summary += " No evidence was retrieved; only computed schedule checks are available."
     return Explanation(
         summary=summary,
         rationale=[
@@ -250,10 +271,15 @@ def _fallback_explanation(state: AgentState) -> Explanation:
             "index, which is computed from Elia load and wind forecasts.",
             "The retail tariff used for cost is a separate labelled input; "
             "Elia grid data never sets the household price.",
+        ] if citations else [
+            "The numeric schedule passed local duration, window and capacity checks.",
+            "No source-supported rationale is available because retrieval returned no evidence.",
         ],
         citation_ids=citations,
         limitation="Advisory demonstration on a labelled data snapshot; the "
-                   "planner does not control real devices.",
+                   "planner does not control real devices. Background household load "
+                   "is not included in this hourly plan. Temperature targets are "
+                   "not verified by a thermal model.",
     )
 
 
@@ -281,7 +307,7 @@ async def _explain(llm: LocalLLM | None, llm_live: bool,
         candidate, notes = llm.structured(Explanation, _EXPLAIN_SYSTEM, user,
                                           max_tokens=600)
         if candidate is not None:
-            if set(candidate.citation_ids).issubset(set(allowed)):
+            if candidate.citation_ids and set(candidate.citation_ids).issubset(set(allowed)):
                 return candidate, "llm", notes
             notes.append("explanation rejected: cited IDs outside the retrieved "
                          "allow-list")
@@ -314,17 +340,7 @@ async def run_agent(mission: str,
                 decided_by=decided_by, thought=decision.thought))
             break
 
-        args = {**_default_args(decision.tool, state), **(decision.args or {})}
-        if decision.tool == "extract_constraints":
-            args["mission"] = state.mission  # the mission is not negotiable
-            args.setdefault("use_llm", use_llm)
-        if decision.tool == "optimize_schedule":
-            args["spec"] = state.spec       # specs only come from the extractor
-            if state.objective:
-                args["objective"] = state.objective
-        if decision.tool == "retrieve_evidence":
-            args.setdefault("mode", state.retrieval_mode)
-            args["mode"] = args.get("mode") or state.retrieval_mode
+        args = _safe_args(decision, state, use_llm)
 
         started = time.perf_counter()
         try:
@@ -367,9 +383,22 @@ async def run_agent(mission: str,
                 decided_by="guardrail",
                 thought=f"guardrail completed the pipeline by running {tool}"))
 
-    if not (state.validation and state.validation.get("valid")):
+    # Tool responses and model decisions are not the final trust boundary.
+    # Reconstruct against the extracted mission in this process, even over MCP.
+    try:
+        spec = MissionSpec.model_validate(state.spec)
+        schedule = [toolbox.core.ScheduledTask(**t) for t in (state.plan or {}).get("schedule", [])]
+        checked = toolbox.core.validate(schedule, spec.max_load_kw, spec.avoid_hours,
+                                        expected_tasks=spec_to_tasks(spec))
+        expected_objective = state.objective or spec.objective
+        if not checked["valid"] or (state.plan or {}).get("objective") != expected_objective:
+            raise ValueError("schedule does not match the authorized mission")
+    except (ValueError, TypeError, KeyError) as error:
         raise toolbox.core.InfeasibleMission(
-            "No valid schedule exists for this mission")
+            "Final mission-bound validation rejected the plan") from error
+    state.validation = checked
+    state.plan["validation"] = checked
+    state.snapshot_mode = state.plan.get("snapshot_mode", state.snapshot_mode)
 
     explanation, explanation_mode, explain_notes = await _explain(
         llm, llm_live, state)
@@ -391,5 +420,7 @@ async def run_agent(mission: str,
             "snapshot": state.snapshot_mode,
             "transport": executor.transport,
             "decision_notes": decision_notes + explain_notes,
+            "citation_check": "retrieved-ID allow-list only; not semantic entailment",
+            "final_gate": "local-mission-bound-validator",
         },
     }
