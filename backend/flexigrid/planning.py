@@ -58,6 +58,8 @@ class PlanningProblem(BaseModel):
     reserve_kw: list[NonNegative] | None = None
     avoid_slots: list[StrictInt] = Field(default_factory=list, max_length=192)
     fixed_starts: dict[str, StrictInt] = Field(default_factory=dict)
+    # New decisions cannot start before this elapsed-time slot; fixed starts may.
+    not_before_slot: StrictInt = Field(default=0, ge=0, le=192)
     objective: Literal["cost", "grid", "balanced"] = "balanced"
     cost_weight: Finite = Field(default=0.56, ge=0, le=1)
     price_scale_eur_per_kwh: Finite = Field(default=0.30, gt=0, le=1000)
@@ -65,6 +67,8 @@ class PlanningProblem(BaseModel):
     @model_validator(mode="after")
     def consistent(self):
         n = len(self.tariff_eur_per_kwh)
+        if self.not_before_slot > n:
+            raise ValueError("not_before_slot is outside the horizon")
         if max(abs(x) for x in self.tariff_eur_per_kwh) > 1000:
             raise ValueError("tariff is outside the supported numerical range")
         for name in ("stress", "background_kw", "reserve_kw"):
@@ -106,6 +110,7 @@ def _candidates(problem: PlanningProblem, job: Job) -> list[int]:
     blocked = set(problem.avoid_slots)
     fixed = problem.fixed_starts.get(job.task_id)
     return [s for s in starts if (fixed is None or fixed == s)
+            and (fixed is not None or s >= problem.not_before_slot)
             and not blocked.intersection(range(s, s + len(job.power_kw)))]
 
 
@@ -119,10 +124,20 @@ def validate_starts(problem: PlanningProblem, starts: dict[str, int]) -> dict:
     flexible = np.zeros(n)
     for job in problem.jobs:
         s = starts.get(job.task_id)
-        if type(s) is not int or s not in _candidates(problem, job):
+        # Do not reuse _candidates: a bug in solver preprocessing must not also
+        # become a bug in the independent checker.
+        fixed = problem.fixed_starts.get(job.task_id)
+        duration = len(job.power_kw)
+        valid = (type(s) is int and 0 <= s and s + duration <= n
+                 and s >= job.earliest_start and s + duration <= job.latest_end)
+        if valid:
+            valid = (s == fixed if fixed is not None else s >= problem.not_before_slot)
+        if valid:
+            valid = not set(problem.avoid_slots).intersection(range(s, s + duration))
+        if not valid:
             errors.append(f"invalid start for {job.task_id}")
             continue
-        flexible[s:s + len(job.power_kw)] += job.power_kw
+        flexible[s:s + duration] += job.power_kw
     background = np.asarray(problem.background_kw or [0.] * n)
     reserve = np.asarray(problem.reserve_kw or [0.] * n)
     forecast_load = flexible + background

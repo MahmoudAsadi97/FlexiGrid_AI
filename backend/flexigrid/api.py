@@ -11,12 +11,13 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from threading import BoundedSemaphore
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 from typing import Literal
-from .planning import PlanningProblem, PlanningError, NoIncumbentError, solve
+from .planning import PlanningProblem, PlanningError, NoIncumbentError, solve, validate_starts
 from .uncertainty import CalibrationRequest, calibrate_reserve
 
 from .agent import run_agent
@@ -41,6 +42,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Per-process admission control, not authentication or a distributed quota.
+_PLANNING_SLOT = BoundedSemaphore(1)
 
 SCENARIOS = [
     {
@@ -142,12 +146,28 @@ def intent_endpoint(payload: IntentRequest) -> dict:
 @app.post("/api/planning/solve")
 def solve_advanced(problem: PlanningProblem) -> dict:
     """15/30/60-minute scheduling with power profiles and whole-home headroom."""
+    if not _PLANNING_SLOT.acquire(blocking=False):
+        raise HTTPException(429, "Another numerical solve is running", headers={"Retry-After": "1"})
     try:
         return solve(problem)
     except PlanningError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except NoIncumbentError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    finally:
+        _PLANNING_SLOT.release()
+
+
+class ScheduleAuditRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    problem: PlanningProblem
+    starts: dict[str, StrictInt] = Field(max_length=64)
+
+
+@app.post("/api/planning/validate")
+def audit_advanced(request: ScheduleAuditRequest) -> dict:
+    """Audit external start assignments against the supplied original problem."""
+    return validate_starts(request.problem, request.starts)
 
 
 @app.post("/api/planning/calibrate")

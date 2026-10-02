@@ -78,7 +78,7 @@ class SbertEmbeddings:
 
         self.model = model or os.getenv("FLEXIGRID_SBERT_MODEL",
                                         "sentence-transformers/all-MiniLM-L6-v2")
-        self._encoder = SentenceTransformer(self.model)
+        self._encoder = SentenceTransformer(self.model, local_files_only=True, trust_remote_code=False)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         vectors = self._encoder.encode(texts, normalize_embeddings=True)

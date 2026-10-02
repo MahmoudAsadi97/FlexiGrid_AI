@@ -4,7 +4,7 @@ Evidence-grounded household energy planning with a local language model, explici
 
 **Research prototype. Advisory only. No real devices are controlled.**
 
-[Research review and upgrade rationale](docs/RESEARCH_UPGRADE.md) · [Current evaluation](backend/evaluation/RESULTS.md) · [Planner benchmark](backend/evaluation/planning_results.json) · [Demo guide](docs/DEMO_AND_DEFENSE.md)
+[Research review and upgrade rationale](docs/RESEARCH_UPGRADE.md) · [Independent validation addendum](docs/INDEPENDENT_VALIDATION.md) · [Current evaluation](backend/evaluation/RESULTS.md) · [Planner benchmark](backend/evaluation/planning_results.json) · [Demo guide](docs/DEMO_AND_DEFENSE.md)
 
 ![FlexiGrid planning dashboard](docs/figures/flexigrid-dashboard.jpg)
 
@@ -12,7 +12,7 @@ Evidence-grounded household energy planning with a local language model, explici
 
 **Mission planner:** describe a household task in English. A local model or labelled rule-based fallback extracts a specification, retrieves evidence, and uses MCP-compatible tools. An hourly MILP computes the schedule. A mandatory local gate checks it against the extracted specification before explanation. Four catalog devices are supported. Review the extracted constraints: language understanding, actual room temperature and EV state of charge are not verified.
 
-**Planning lab:** specify a numerical problem directly, using 15-, 30- or 60-minute slots, variable appliance profiles, background load, an explicit forecast-error reserve, hard avoid slots and fixed starts. Inspect computed load traces, energy, cost, solver status, remaining optimality gap and the input fingerprint. Import or export JSON. This interface requires the real Python backend and does not fabricate an offline result.
+**Planning lab:** specify a numerical problem directly, using 15-, 30- or 60-minute slots, variable appliance profiles, background load, an explicit forecast-error reserve, hard avoid slots, fixed starts and a not-before slot for new decisions. Inspect computed load traces, energy, cost, solver status, remaining optimality gap and the input fingerprint. Import or export JSON. This interface requires the real Python backend and does not fabricate an offline result.
 
 The original offline frontend demonstration remains separate and labelled; it is not the advanced MILP solver.
 
@@ -99,6 +99,10 @@ curl http://localhost:8000/api/planning/solve \
 
 Run that command from the repository root. The response includes starts, reconstructed loads and metrics, solver status/gap and a normalized-input SHA-256. Numerical infeasibility returns HTTP 422; stopping without an acceptable incumbent returns 503. The advanced API never silently relaxes hard avoid slots.
 
+`POST /api/planning/validate` independently checks `{ "problem": ..., "starts": ... }`. It reconstructs intervals directly rather than trusting the solver candidate list. `not_before_slot` prevents new decisions from starting in the past while preserving explicitly fixed starts. Timestamps still require caller-side alignment.
+
+Optional sentence-transformer loading uses cached files only and disables remote model code.
+
 `POST /api/planning/calibrate` accepts `forecasts_kw`, `actuals_kw` and `alpha`. Both arrays contain matching held-out whole-horizon blocks. Use forecasts made without the corresponding outcomes. Calibration requires exchangeable blocks and does not provide a drift-robust or physical safety guarantee.
 
 ### Elia data
@@ -136,7 +140,7 @@ Current retrieval/intent results were regenerated in deterministic mode. Histori
 
 The advanced model supports at most 64 non-interruptible jobs and 192 equal elapsed-time slots. Upstream code must align civil dates, timezones, daylight-saving transitions, forecast vintages and units. It does not model electrical transients, network power flows, tariff taxes, thermal comfort, EV state of charge or battery/PV dispatch.
 
-Default CORS permits the local frontend, but the API has no production authentication, request-rate control or device authorization. Do not expose it publicly as-is. A physical pilot needs independently enforced hardware protection, validated equipment models, consent, failure handling and monitored fresh data. Neither an input hash nor a passing numerical checker certifies the real world.
+Default CORS permits the local frontend. The advanced solve endpoint admits one numerical solve per backend process and returns HTTP 429 when busy, but the API has no production authentication, distributed request-rate control or device authorization. Do not expose it publicly as-is. A physical pilot needs independently enforced hardware protection, validated equipment models, consent, failure handling and monitored fresh data. Neither an input hash nor a passing numerical checker certifies the real world.
 
 ## Earlier academic material
 
