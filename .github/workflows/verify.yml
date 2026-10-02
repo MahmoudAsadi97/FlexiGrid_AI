@@ -10,9 +10,24 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package source for reproducibility
+        run: git archive --format=zip HEAD -o FlexiGrid_AI-source.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-snapshot
+          path: FlexiGrid_AI-source.zip
+          retention-days: 7
   backend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      FLEXIGRID_EMBEDDINGS: tfidf
+      ELIA_USE_LIVE: 'false'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,15 +39,6 @@ jobs:
       - name: Backend regression tests
         working-directory: backend
         run: python -m unittest discover -s tests -v
-      - name: Package source for reproducibility
-        if: always()
-        run: git archive --format=zip HEAD -o FlexiGrid_AI-source.zip
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: source-snapshot
-          path: FlexiGrid_AI-source.zip
-          retention-days: 7
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 15
